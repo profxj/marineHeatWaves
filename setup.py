@@ -1,5 +1,6 @@
 
-from distutils.core import setup
+from distutils.extension import Extension
+from setuptools import setup, find_packages
 
 setup(name='marineHeatWaves',
     version='0.28',
