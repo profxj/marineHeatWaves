@@ -14,7 +14,10 @@ import scipy.ndimage as ndimage
 from datetime import date
 
 
-def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5, smoothPercentile=True, smoothPercentileWidth=31, minDuration=5, joinAcrossGaps=True, maxGap=2, maxPadLength=False, coldSpells=False, alternateClimatology=False, Ly=False):
+def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
+           smoothPercentile=True, smoothPercentileWidth=31, minDuration=5,
+           joinAcrossGaps=True, maxGap=2, maxPadLength=False, coldSpells=False,
+           alternateClimatology=False, Ly=False):
     '''
 
     Applies the Hobday et al. (2016) marine heat wave definition to an input time
@@ -24,7 +27,7 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
     Inputs:
 
       t       Time vector, in datetime format (e.g., date(1982,1,1).toordinal())
-              [1D numpy array of length T]
+              [1D numpy array of length T of type int]
       temp    Temperature vector [1D numpy array of length T]
 
     Outputs:
@@ -348,11 +351,11 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
     mhw['n_events'] = len(mhw['time_start'])
     categories = np.array(['Moderate', 'Strong', 'Severe', 'Extreme'])
     for ev in range(mhw['n_events']):
-        mhw['date_start'].append(date.fromordinal(mhw['time_start'][ev]))
-        mhw['date_end'].append(date.fromordinal(mhw['time_end'][ev]))
         # Get SST series during MHW event, relative to both threshold and to seasonal climatology
         tt_start = np.where(t==mhw['time_start'][ev])[0][0]
         tt_end = np.where(t==mhw['time_end'][ev])[0][0]
+        mhw['date_start'].append(date.fromordinal(mhw['time_start'][ev]))
+        mhw['date_end'].append(date.fromordinal(mhw['time_end'][ev]))
         mhw['index_start'].append(tt_start)
         mhw['index_end'].append(tt_end)
         temp_mhw = temp[tt_start:tt_end+1]
