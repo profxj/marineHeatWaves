@@ -17,7 +17,7 @@ from mhw import utils
 
 from IPython import embed
 
-def time(t):
+def build_time_dict(t):
 
     # Generate vectors for year, month, day-of-month, and day-of-year
     T = len(t)
@@ -32,7 +32,7 @@ def time(t):
     # Leap-year baseline for defining day-of-year values
     year_leapYear = 2012 # This year was a leap-year and therefore doy in range of 1 to 366
     t_leapYear = np.arange(date(year_leapYear, 1, 1).toordinal(),date(year_leapYear, 12, 31).toordinal()+1)
-    dates_leapYear = [date.fromordinal(tt.astype(int)) for tt in t_leapYear]
+    #dates_leapYear = [date.fromordinal(tt.astype(int)) for tt in t_leapYear]
     month_leapYear = np.zeros((len(t_leapYear)))
     day_leapYear = np.zeros((len(t_leapYear)))
     doy_leapYear = np.zeros((len(t_leapYear)))
@@ -45,13 +45,14 @@ def time(t):
         doy[tt] = doy_leapYear[(month_leapYear == month[tt]) * (day_leapYear == day[tt])]
 
     times = {}
-    times['year'] = year
-    times['doy'] = doy
+    times['t'] = t
+    times['year'] = year.astype(int)
+    times['doy'] = doy.astype(int)
 
     return times
 
-def calc(times, temp, windowHalfWidth=5, maxPadLength=False, coldSpells=False, Ly=False,
-         smoothPercentile=True, smoothPercentileWidth=31):
+def calc(times, temp, windowHalfWidth=5, maxPadLength=False, Ly=False,
+         smoothPercentile=True, smoothPercentileWidth=31, pctile=90):
     '''
 
     Applies the Hobday et al. (2016) marine heat wave definition to an input time
@@ -60,7 +61,7 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, coldSpells=False, L
 
     Inputs:
 
-      t       Time vector, in datetime format (e.g., date(1982,1,1).toordinal())
+      times   Time vector, in datetime format (e.g., date(1982,1,1).toordinal())
               [1D numpy array of length T of type int]
       temp    Temperature vector [1D numpy array of length T]
 
@@ -76,6 +77,8 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, coldSpells=False, L
 
     Options:
 
+      pctile                 Threshold percentile (%) for detection of extreme values
+                             (DEFAULT = 90)
       smoothPercentile       Boolean switch indicating whether to smooth the threshold
                              percentile timeseries with a moving average (DEFAULT = True)
       smoothPercentileWidth  Width of moving average window for smoothing threshold
@@ -129,11 +132,9 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, coldSpells=False, L
     #
     # Calculate threshold and seasonal climatology (varying with day-of-year)
     #
-    T = len(times['year'])
     tempClim = temp
-    #TClim = np.array([T]).copy()[0]
-    yearClim = times['year']
     doyClim = times['doy']
+    TClim = len(doyClim)
 
     # Pad missing values for all consecutive missing blocks of length <= maxPadLength
     if maxPadLength:
@@ -146,14 +147,16 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, coldSpells=False, L
     #clim_start = np.where(yearClim == climatologyPeriod[0])[0][0]
     #clim_end = np.where(yearClim == climatologyPeriod[1])[0][-1]
     clim_start = 0
-    clim_end = len(yearClim)
+    clim_end = len(doyClim)
 
     # Inialize arrays
-    #thresh_climYear = np.NaN*np.zeros(lenClimYear)
-    seas_climYear = np.NaN*np.zeros(lenClimYear)
+    thresh_climYear = np.NaN*np.zeros(lenClimYear, dtype='float32')
+    seas_climYear = np.NaN*np.zeros(lenClimYear, dtype='float32')
     clim = {}
     #clim['thresh'] = np.NaN*np.zeros(TClim)
-    clim['seas'] = np.NaN*np.zeros(TClim)
+    #clim['seas'] = np.NaN*np.zeros(TClim)
+    wHW_array = np.outer(np.ones(1000, dtype='int'), np.arange(-windowHalfWidth, windowHalfWidth+1))
+    nwHW = wHW_array.shape[1]
 
     # Loop over all day-of-year values, and calculate threshold and seasonal climatology across years
     for d in range(1,lenClimYear+1):
@@ -165,16 +168,16 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, coldSpells=False, L
         # If this doy value does not exist (i.e. in 360-day calendars) then skip it
         if len(tt0) == 0:
             continue
-        tt = np.array([])
-        embed(header='169 of climate')
-        for w in range(-windowHalfWidth, windowHalfWidth+1):
-            tt = np.append(tt, clim_start+tt0 + w)
-        tt = tt[tt>=0] # Reject indices "before" the first element
-        tt = tt[tt<TClim] # Reject indices "after" the last element
-        #thresh_climYear[d-1] = np.nanpercentile(tempClim[tt.astype(int)], pctile)
-        seas_climYear[d-1] = np.nanmean(tempClim[tt.astype(int)])
+        #tt = np.array([])
+        #for w in range(-windowHalfWidth, windowHalfWidth+1):
+        #    tt = np.append(tt, clim_start+tt0 + w)
+        tt = (wHW_array[0:len(tt0),:] + np.outer(tt0, np.ones(nwHW, dtype='int'))).flatten()
+        gd = np.all([tt >= 0, tt<TClim], axis=0)
+        tt = tt[gd] # Reject indices "after" the last element
+        thresh_climYear[d-1] = np.nanpercentile(tempClim[tt], pctile)
+        seas_climYear[d-1] = np.nanmean(tempClim[tt])
     # Special case for Feb 29
-    thresh_climYear[feb29-1] = 0.5*thresh_climYear[feb29-2] + 0.5*thresh_climYear[feb29]
+    #thresh_climYear[feb29-1] = 0.5*thresh_climYear[feb29-2] + 0.5*thresh_climYear[feb29]
     seas_climYear[feb29-1] = 0.5*seas_climYear[feb29-2] + 0.5*seas_climYear[feb29]
 
     # Smooth if desired
@@ -182,16 +185,18 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, coldSpells=False, L
         # If the length of year is < 365/366 (e.g. a 360 day year from a Climate Model)
         if Ly:
             valid = ~np.isnan(thresh_climYear)
-            thresh_climYear[valid] = runavg(thresh_climYear[valid], smoothPercentileWidth)
+            thresh_climYear[valid] = utils.runavg(thresh_climYear[valid], smoothPercentileWidth)
             valid = ~np.isnan(seas_climYear)
-            seas_climYear[valid] = runavg(seas_climYear[valid], smoothPercentileWidth)
+            seas_climYear[valid] = utils.runavg(seas_climYear[valid], smoothPercentileWidth)
         # >= 365-day year
         else:
-            thresh_climYear = runavg(thresh_climYear, smoothPercentileWidth)
-            seas_climYear = runavg(seas_climYear, smoothPercentileWidth)
+            thresh_climYear = utils.runavg(thresh_climYear, smoothPercentileWidth)
+            seas_climYear = utils.runavg(seas_climYear, smoothPercentileWidth)
 
     # Generate threshold for full time series
-    clim['thresh'] = thresh_climYear[doy.astype(int)-1]
-    clim['seas'] = seas_climYear[doy.astype(int)-1]
+    clim['thresh'] = thresh_climYear.astype('float32')#[doyClim-1]
+    clim['seas'] = seas_climYear.astype('float32')#[doyClim-1]
     # Save vector indicating which points in temp are missing values
-    clim['missing'] = np.isnan(temp)
+    #clim['missing'] = np.isnan(temp)
+
+    return clim
