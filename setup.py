@@ -10,6 +10,6 @@ setup(name='marineHeatWaves',
     url = "https://github.com/ecjoliver",
     license = "LICENSE.txt",
     long_description = open('README.md').read(),
-    py_modules=['marineHeatWaves'],
+    #py_modules=['marineHeatWaves'],
 )
 
