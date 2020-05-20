@@ -7,11 +7,9 @@
 
 
 import numpy as np
-import scipy as sp
-from scipy import linalg
-from scipy import stats
-import scipy.ndimage as ndimage
 from datetime import date
+
+from numba import njit, prange
 
 from mhw import utils
 
@@ -52,7 +50,8 @@ def build_time_dict(t):
     return times
 
 def calc(times, temp, windowHalfWidth=5, maxPadLength=False, Ly=False,
-         smoothPercentile=True, smoothPercentileWidth=31, pctile=90):
+         smoothPercentile=True, smoothPercentileWidth=31, pctile=90,
+         parallel=False):
     '''
 
     Applies the Hobday et al. (2016) marine heat wave definition to an input time
@@ -159,25 +158,30 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, Ly=False,
     nwHW = wHW_array.shape[1]
 
     # Loop over all day-of-year values, and calculate threshold and seasonal climatology across years
-    for d in range(1,lenClimYear+1):
-        # Special case for Feb 29
-        if d == feb29:
-            continue
-        # find all indices for each day of the year +/- windowHalfWidth and from them calculate the threshold
-        tt0 = np.where(doyClim[clim_start:clim_end+1] == d)[0] 
-        # If this doy value does not exist (i.e. in 360-day calendars) then skip it
-        if len(tt0) == 0:
-            continue
-        #tt = np.array([])
-        #for w in range(-windowHalfWidth, windowHalfWidth+1):
-        #    tt = np.append(tt, clim_start+tt0 + w)
-        tt = (wHW_array[0:len(tt0),:] + np.outer(tt0, np.ones(nwHW, dtype='int'))).flatten()
-        gd = np.all([tt >= 0, tt<TClim], axis=0)
-        tt = tt[gd] # Reject indices "after" the last element
-        thresh_climYear[d-1] = np.nanpercentile(tempClim[tt], pctile)
-        seas_climYear[d-1] = np.nanmean(tempClim[tt])
+    embed(header='160')
+    if parallel:
+        doit(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW,
+                 TClim, thresh_climYear, tempClim, pctile, seas_climYear)
+    else:
+        for d in range(1,lenClimYear+1):
+            # Special case for Feb 29
+            if d == feb29:
+                continue
+            # find all indices for each day of the year +/- windowHalfWidth and from them calculate the threshold
+            tt0 = np.where(doyClim[clim_start:clim_end+1] == d)[0]
+            # If this doy value does not exist (i.e. in 360-day calendars) then skip it
+            if len(tt0) == 0:
+                continue
+            #tt = np.array([])
+            #for w in range(-windowHalfWidth, windowHalfWidth+1):
+            #    tt = np.append(tt, clim_start+tt0 + w)
+            tt = (wHW_array[0:len(tt0),:] + np.outer(tt0, np.ones(nwHW, dtype='int'))).flatten()
+            gd = np.all([tt >= 0, tt<TClim], axis=0)
+            tt = tt[gd] # Reject indices "after" the last element
+            thresh_climYear[d-1] = np.nanpercentile(tempClim[tt], pctile)
+            seas_climYear[d-1] = np.nanmean(tempClim[tt])
     # Special case for Feb 29
-    #thresh_climYear[feb29-1] = 0.5*thresh_climYear[feb29-2] + 0.5*thresh_climYear[feb29]
+    thresh_climYear[feb29-1] = 0.5*thresh_climYear[feb29-2] + 0.5*thresh_climYear[feb29]
     seas_climYear[feb29-1] = 0.5*seas_climYear[feb29-2] + 0.5*seas_climYear[feb29]
 
     # Smooth if desired
@@ -200,3 +204,24 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, Ly=False,
     #clim['missing'] = np.isnan(temp)
 
     return clim
+
+def doit(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW,
+         TClim, thresh_climYear, tempClim, pctile, seas_climYear):
+
+    for d in prange(1,lenClimYear+1):
+        # Special case for Feb 29
+        if d == feb29:
+            continue
+        # find all indices for each day of the year +/- windowHalfWidth and from them calculate the threshold
+        tt0 = np.where(doyClim[clim_start:clim_end+1] == d)[0]
+        # If this doy value does not exist (i.e. in 360-day calendars) then skip it
+        if len(tt0) == 0:
+            continue
+        #tt = np.array([])
+        #for w in range(-windowHalfWidth, windowHalfWidth+1):
+        #    tt = np.append(tt, clim_start+tt0 + w)
+        tt = (wHW_array[0:len(tt0),:] + np.outer(tt0, np.ones(nwHW, dtype='int'))).flatten()
+        gd = np.all([tt >= 0, tt<TClim], axis=0)
+        tt = tt[gd] # Reject indices "after" the last element
+        thresh_climYear[d-1] = np.nanpercentile(tempClim[tt], pctile)
+        seas_climYear[d-1] = np.nanmean(tempClim[tt])
