@@ -2,6 +2,35 @@
 
 import numpy as np
 import scipy.ndimage as ndimage
+from datetime import date
+
+def calc_doy(t):
+    # Generate vectors for year, month, day-of-month, and day-of-year
+    T = len(t)
+    year = np.zeros((T))
+    month = np.zeros((T))
+    day = np.zeros((T))
+    doy = np.zeros((T))
+    for i in range(T):
+        year[i] = date.fromordinal(t[i]).year
+        month[i] = date.fromordinal(t[i]).month
+        day[i] = date.fromordinal(t[i]).day
+    # Leap-year baseline for defining day-of-year values
+    year_leapYear = 2012  # This year was a leap-year and therefore doy in range of 1 to 366
+    t_leapYear = np.arange(date(year_leapYear, 1, 1).toordinal(), date(year_leapYear, 12, 31).toordinal() + 1)
+    dates_leapYear = [date.fromordinal(tt.astype(int)) for tt in t_leapYear]
+    month_leapYear = np.zeros((len(t_leapYear)))
+    day_leapYear = np.zeros((len(t_leapYear)))
+    doy_leapYear = np.zeros((len(t_leapYear)))
+    for tt in range(len(t_leapYear)):
+        month_leapYear[tt] = date.fromordinal(t_leapYear[tt]).month
+        day_leapYear[tt] = date.fromordinal(t_leapYear[tt]).day
+        doy_leapYear[tt] = t_leapYear[tt] - date(date.fromordinal(t_leapYear[tt]).year, 1, 1).toordinal() + 1
+    # Calculate day-of-year values
+    for tt in range(T):
+        doy[tt] = doy_leapYear[(month_leapYear == month[tt]) * (day_leapYear == day[tt])]
+    # Return
+    return doy
 
 
 def runavg(ts, w):
