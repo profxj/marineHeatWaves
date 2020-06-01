@@ -13,6 +13,7 @@ from scipy import stats
 import scipy.ndimage as ndimage
 from datetime import date
 
+from mhw import utils
 
 def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
            smoothPercentile=True, smoothPercentileWidth=31, minDuration=5,
@@ -251,8 +252,8 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
 
     # Pad missing values for all consecutive missing blocks of length <= maxPadLength
     if maxPadLength:
-        temp = pad(temp, maxPadLength=maxPadLength)
-        tempClim = pad(tempClim, maxPadLength=maxPadLength)
+        temp = utils.pad(temp, maxPadLength=maxPadLength)
+        tempClim = utils.pad(tempClim, maxPadLength=maxPadLength)
 
     # Length of climatological year
     lenClimYear = 366
@@ -291,13 +292,13 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
         # If the length of year is < 365/366 (e.g. a 360 day year from a Climate Model)
         if Ly:
             valid = ~np.isnan(thresh_climYear)
-            thresh_climYear[valid] = runavg(thresh_climYear[valid], smoothPercentileWidth)
+            thresh_climYear[valid] = utils.runavg(thresh_climYear[valid], smoothPercentileWidth)
             valid = ~np.isnan(seas_climYear)
-            seas_climYear[valid] = runavg(seas_climYear[valid], smoothPercentileWidth)
+            seas_climYear[valid] = utils.runavg(seas_climYear[valid], smoothPercentileWidth)
         # >= 365-day year
         else:
-            thresh_climYear = runavg(thresh_climYear, smoothPercentileWidth)
-            seas_climYear = runavg(seas_climYear, smoothPercentileWidth)
+            thresh_climYear = utils.runavg(thresh_climYear, smoothPercentileWidth)
+            seas_climYear = utils.runavg(seas_climYear, smoothPercentileWidth)
 
     # Generate threshold for full time series
     clim['thresh'] = thresh_climYear[doy.astype(int)-1]
@@ -762,7 +763,7 @@ def meanTrend(mhwBlock, alpha=0.05):
         valid = ~np.isnan(y) # non-NaN indices
 
         # Perform linear regression over valid indices
-        if np.isinf(nonans(y).sum()): # If contains Inf values
+        if np.isinf(utils.nonans(y).sum()): # If contains Inf values
             beta = [np.nan, np.nan]
         elif np.sum(~np.isnan(y)) > 0: # If at least one non-NaN value
             beta = linalg.lstsq(X[valid,:], y[valid])[0]
