@@ -725,6 +725,8 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
         tt = tt[tt<TClim] # Reject indices "after" the last element
         thresh_climYear[d-1] = np.nanpercentile(tempClim[tt.astype(int)], pctile)
         seas_climYear[d-1] = np.nanmean(tempClim[tt.astype(int)])
+        if d == 353:
+            embed(header='729 of detect')
     # Special case for Feb 29
     thresh_climYear[feb29-1] = 0.5*thresh_climYear[feb29-2] + 0.5*thresh_climYear[feb29]
     seas_climYear[feb29-1] = 0.5*seas_climYear[feb29-2] + 0.5*seas_climYear[feb29]
