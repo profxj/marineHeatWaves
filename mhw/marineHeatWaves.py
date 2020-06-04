@@ -335,6 +335,7 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, pctile=
         mhw['time_start'].append(t[idx[0]])
         mhw['time_end'].append(t[idx[-1]])
 
+    import pdb; pdb.set_trace()
     # Link heat waves that occur before and after a short gap (gap must be no longer than maxGap)
     if joinAcrossGaps:
         # Calculate gap length for each consecutive pair of events
@@ -770,7 +771,10 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
             continue
         mhw['time_start'].append(t[np.where(events == ev)[0][0]])
         mhw['time_end'].append(t[np.where(events == ev)[0][-1]])
+        if mhw['time_start'][-1] ==726855:
+            import pdb; pdb.set_trace()
 
+    embed(header='775 of detect')
     # Link heat waves that occur before and after a short gap (gap must be no longer than maxGap)
     if joinAcrossGaps:
         # Calculate gap length for each consecutive pair of events
@@ -788,7 +792,6 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
                 gaps = np.array(mhw['time_start'][1:]) - np.array(mhw['time_end'][0:-1]) - 1
                 if len(gaps) == 0:
                     break
-
     # Calculate marine heat wave properties
     mhw['n_events'] = len(mhw['time_start'])
     categories = np.array(['Moderate', 'Strong', 'Severe', 'Extreme'])
