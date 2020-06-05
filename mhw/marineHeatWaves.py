@@ -747,6 +747,7 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
     # Generate threshold for full time series
     clim['thresh'] = thresh_climYear[doy.astype(int)-1]
     clim['seas'] = seas_climYear[doy.astype(int)-1]
+    clim['doy'] = doy.astype(int)
 
     # Save vector indicating which points in temp are missing values
     clim['missing'] = np.isnan(temp)
@@ -776,7 +777,6 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
         if mhw['time_start'][-1] ==726855:
             import pdb; pdb.set_trace()
 
-    embed(header='775 of detect')
     # Link heat waves that occur before and after a short gap (gap must be no longer than maxGap)
     if joinAcrossGaps:
         # Calculate gap length for each consecutive pair of events

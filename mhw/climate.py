@@ -205,18 +205,18 @@ def calc(times, temp, windowHalfWidth=5, maxPadLength=False, Ly=False,
 
     return clim
 
-#@njit(parallel=True)
+@njit(parallel=True)
 def doit(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW,
          TClim, thresh_climYear, tempClim, pctile, seas_climYear):
 
     ones = np.array([1]*nwHW) #np.ones(nwHW).astype(int)
-    for d in range(1,lenClimYear+1):
-    #for d in prange(1,lenClimYear+1):
+    #for _d in range(1,lenClimYear+1):
+    for _d in prange(1,lenClimYear+1):
         # Special case for Feb 29
-        if d == feb29:
+        if _d == feb29:
             continue
         # find all indices for each day of the year +/- windowHalfWidth and from them calculate the threshold
-        tt0 = np.where(doyClim[clim_start:clim_end+1] == d)[0]
+        tt0 = np.where(doyClim[clim_start:clim_end+1] == _d)[0]
         # If this doy value does not exist (i.e. in 360-day calendars) then skip it
         if len(tt0) == 0:
             continue
@@ -227,7 +227,7 @@ def doit(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW,
         #gd = np.all([tt >= 0, tt<TClim], axis=0)
         gd = (tt >= 0) & (tt<TClim)
         tt = tt[gd] # Reject indices "after" the last element
-        thresh_climYear[d-1] = np.nanpercentile(tempClim[tt], pctile)
-        if d == 353:
-            import pdb; pdb.set_trace()
-        seas_climYear[d-1] = np.nanmean(tempClim[tt])
+        thresh_climYear[_d-1] = np.nanpercentile(tempClim[tt], pctile)
+        #if _d == 353:
+        #    import pdb; pdb.set_trace()
+        seas_climYear[_d-1] = np.nanmean(tempClim[tt])
