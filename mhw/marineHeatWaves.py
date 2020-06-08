@@ -774,8 +774,8 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
             continue
         mhw['time_start'].append(t[np.where(events == ev)[0][0]])
         mhw['time_end'].append(t[np.where(events == ev)[0][-1]])
-        if mhw['time_start'][-1] ==726855:
-            import pdb; pdb.set_trace()
+        #if mhw['time_start'][-1] ==726855:
+        #    import pdb; pdb.set_trace()
 
     # Link heat waves that occur before and after a short gap (gap must be no longer than maxGap)
     if joinAcrossGaps:
