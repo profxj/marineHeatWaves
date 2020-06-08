@@ -30,7 +30,7 @@ def calc_doy(t):
     for tt in range(T):
         doy[tt] = doy_leapYear[(month_leapYear == month[tt]) * (day_leapYear == day[tt])]
     # Return
-    return doy
+    return doy.astype(int)
 
 
 def runavg(ts, w):
