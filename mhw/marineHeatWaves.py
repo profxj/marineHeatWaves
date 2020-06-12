@@ -21,7 +21,7 @@ from mhw import tmp_numba
 from IPython import embed
 
 
-def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, pctile=90, minDuration=5,
+def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data, pctile=90, minDuration=5,
            joinAcrossGaps=True, maxGap=2, maxPadLength=False, coldSpells=False,
                            parallel=True):
     '''
@@ -366,6 +366,7 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, pctile=
         float_keys += [key+'_relThresh', key+'_abs']
     float_keys += ['rate_onset', 'rate_decline']
 
+    '''
     # Init the array
     dtypes = []
 
@@ -381,7 +382,37 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, pctile=
     # Init
     data['time_start'][0][0:mhw['n_events']] = np.array(mhw['time_start'])
     data['time_end'][0][0:mhw['n_events']] = np.array(mhw['time_end'])
-    embed(header='383 of marine')
+    #embed(header='383 of marine')
+
+    time_start = data['time_start'][0].copy()
+    time_end = data['time_end'][0].copy()
+    time_peak = np.zeros_like(time_end)
+    '''
+    time_start = np.array(mhw['time_start'], dtype='int32')
+    time_end = np.array(mhw['time_end'], dtype='int32')
+    time_peak = np.zeros_like(time_end)
+    duration = np.zeros_like(time_end)
+    # MHW Intensity metrics
+    intensity_max = np.zeros_like(time_end, dtype='float32')
+    intensity_mean = np.zeros_like(intensity_max)
+    intensity_var = np.zeros_like(intensity_max)
+    intensity_cumulative = np.zeros_like(intensity_max)
+    intensity_max_relThresh = np.zeros_like(intensity_max)
+    intensity_mean_relThresh = np.zeros_like(intensity_max)
+    intensity_var_relThresh = np.zeros_like(intensity_max)
+    intensity_cumulative_relThresh = np.zeros_like(intensity_max)
+    intensity_max_abs = np.zeros_like(intensity_max)
+    intensity_mean_abs = np.zeros_like(intensity_max)
+    intensity_var_abs = np.zeros_like(intensity_max)
+    intensity_cumulative_abs = np.zeros_like(intensity_max)
+    rate_onset = np.zeros_like(intensity_max)
+    rate_decline = np.zeros_like(intensity_max)
+    #
+    category = np.zeros_like(time_end)
+    duration_moderate = np.zeros_like(time_end)
+    duration_strong = np.zeros_like(time_end)
+    duration_severe = np.zeros_like(time_end)
+    duration_extreme = np.zeros_like(time_end)
 
 
     if not parallel:
@@ -433,33 +464,44 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, pctile=
     else:
         #tmp_numba.event_stats(mhw['n_events'], t, data, temp, thresh, seas)
         #
-        from importlib import reload
-        reload(tmp_numba)
-        time_start = data['time_start'][0].copy()
-        time_end = data['time_end'][0].copy()
-        time_peak = np.zeros_like(time_end)
-        tmp_numba.dev_event_stats(mhw['n_events'], t, temp, thresh, seas, time_start, time_end, time_peak)
+        #from importlib import reload
+        #reload(tmp_numba)
+        _ = tmp_numba.dev_event_stats(mhw['n_events'], t, temp, thresh, seas, time_start, time_end,
+                                      time_peak, duration, intensity_max, intensity_mean, intensity_var,
+                                      intensity_cumulative, intensity_max_relThresh, intensity_mean_relThresh,
+                                      intensity_var_relThresh, intensity_cumulative_relThresh, intensity_max_abs,
+                                      intensity_mean_abs, intensity_var_abs, intensity_cumulative_abs, category,
+                                      duration_moderate, duration_strong, duration_severe, duration_extreme,
+                                      rate_onset, rate_decline)
 
-        '''
-        # Rates of onset and decline
-        # Requires getting MHW strength at "start" and "end" of event (continuous: assume start/end half-day before/after first/last point)
-        if tt_start > 0:
-            mhw_relSeas_start = 0.5 * (mhw_relSeas[0] + temp[tt_start - 1] - clim['seas'][tt_start - 1])
-            mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas_start) / (tt_peak + 0.5))
-        else:  # MHW starts at beginning of time series
-            if tt_peak == 0:  # Peak is also at begining of time series, assume onset time = 1 day
-                mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas[0]) / 1.)
-            else:
-                mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas[0]) / tt_peak)
-        if tt_end < T - 1:
-            mhw_relSeas_end = 0.5 * (mhw_relSeas[-1] + temp[tt_end + 1] - clim['seas'][tt_end + 1])
-            mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas_end) / (tt_end - tt_start - tt_peak + 0.5))
-        else:  # MHW finishes at end of time series
-            if tt_peak == T - 1:  # Peak is also at end of time series, assume decline time = 1 day
-                mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / 1.)
-            else:
-                mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / (tt_end - tt_start - tt_peak))
-        '''
+    # Fill up data
+    data['time_start'][0][0:mhw['n_events']] = time_start
+    data['time_end'][0][0:mhw['n_events']] = time_end
+    for key in int_keys:
+        data[key][0][0:mhw['n_events']] = eval(key)
+    for key in float_keys:
+        data[key][0][0:mhw['n_events']] = eval(key)
+
+    '''
+    # Rates of onset and decline
+    # Requires getting MHW strength at "start" and "end" of event (continuous: assume start/end half-day before/after first/last point)
+    if tt_start > 0:
+        mhw_relSeas_start = 0.5 * (mhw_relSeas[0] + temp[tt_start - 1] - clim['seas'][tt_start - 1])
+        mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas_start) / (tt_peak + 0.5))
+    else:  # MHW starts at beginning of time series
+        if tt_peak == 0:  # Peak is also at begining of time series, assume onset time = 1 day
+            mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas[0]) / 1.)
+        else:
+            mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas[0]) / tt_peak)
+    if tt_end < T - 1:
+        mhw_relSeas_end = 0.5 * (mhw_relSeas[-1] + temp[tt_end + 1] - clim['seas'][tt_end + 1])
+        mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas_end) / (tt_end - tt_start - tt_peak + 0.5))
+    else:  # MHW finishes at end of time series
+        if tt_peak == T - 1:  # Peak is also at end of time series, assume decline time = 1 day
+            mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / 1.)
+        else:
+            mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / (tt_end - tt_start - tt_peak))
+    '''
 
     # Flip climatology and intensties in case of cold spell detection
     if coldSpells:

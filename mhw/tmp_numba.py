@@ -54,7 +54,14 @@ def event_stats(n_events, t, mhw, temp, thresh, seas):
 
 
 @njit(parallel=True)
-def dev_event_stats(n_events, t, temp, thresh, seas, time_start, time_end, time_peak):
+def dev_event_stats(n_events, t, temp, thresh, seas, time_start, time_end,
+                    time_peak, duration, intensity_max, intensity_mean, intensity_var,
+                    intensity_cumulative, intensity_max_relThresh, intensity_mean_relThresh,
+                    intensity_var_relThresh, intensity_cumulative_relThresh, intensity_max_abs,
+                    intensity_mean_abs, intensity_var_abs, intensity_cumulative_abs, category,
+                    duration_moderate, duration_strong, duration_severe, duration_extreme,
+                    rate_onset, rate_decline):
+    #for ev in range(n_events):
     for ev in prange(n_events):
         # Get SST series during MHW event, relative to both threshold and to seasonal climatology
         tt_start = np.where(t == time_start[ev])[0][0]
@@ -77,31 +84,49 @@ def dev_event_stats(n_events, t, temp, thresh, seas, time_start, time_end, time_
         time_peak[ev] = time_start[ev] + tt_peak
         #mhw['date_peak'].append(date.fromordinal(mhw['time_start'][ev] + tt_peak))
         #mhw['index_peak'].append(tt_start + tt_peak)
-        '''
         # MHW Duration
-        mhw['duration'][ev] = len(mhw_relSeas)
+        duration[ev] = len(mhw_relSeas)
         # MHW Intensity metrics
-        mhw['intensity_max'][ev] = mhw_relSeas[tt_peak]
-        mhw['intensity_mean'][ev] = mhw_relSeas.mean()
-        mhw['intensity_var'][ev] = np.sqrt(mhw_relSeas.var())
-        mhw['intensity_cumulative'][ev] = mhw_relSeas.sum()
-        mhw['intensity_max_relThresh'][ev] = mhw_relThresh[tt_peak]
-        mhw['intensity_mean_relThresh'][ev] = mhw_relThresh.mean()
-        mhw['intensity_var_relThresh'][ev] = np.sqrt(mhw_relThresh.var())
-        mhw['intensity_cumulative_relThresh'][ev] = mhw_relThresh.sum()
-        mhw['intensity_max_abs'][ev] = mhw_abs[tt_peak]
-        mhw['intensity_mean_abs'][ev] = mhw_abs.mean()
-        mhw['intensity_var_abs'][ev] = np.sqrt(mhw_abs.var())
-        mhw['intensity_cumulative_abs'][ev] = mhw_abs.sum()
+        intensity_max[ev] = mhw_relSeas[tt_peak]
+        intensity_mean[ev] = mhw_relSeas.mean()
+        intensity_var[ev] = np.sqrt(mhw_relSeas.var())
+        intensity_cumulative[ev] = mhw_relSeas.sum()
+        intensity_max_relThresh[ev] = mhw_relThresh[tt_peak]
+        intensity_mean_relThresh[ev] = mhw_relThresh.mean()
+        intensity_var_relThresh[ev] = np.sqrt(mhw_relThresh.var())
+        intensity_cumulative_relThresh[ev] = mhw_relThresh.sum()
+        intensity_max_abs[ev] = mhw_abs[tt_peak]
+        intensity_mean_abs[ev] = mhw_abs.mean()
+        intensity_var_abs[ev] = np.sqrt(mhw_abs.var())
+        intensity_cumulative_abs[ev] = mhw_abs.sum()
         # Fix categories
         tt_peakCat = np.argmax(mhw_relThreshNorm)
         cats = np.floor(1. + mhw_relThreshNorm)
+        pcat = int(cats[tt_peakCat])
         #mhw['category'][ev] = categories[np.min([cats[tt_peakCat], 4]).astype(int) - 1]
-        mhw['category'][ev] = np.min([cats[tt_peakCat], 4]).astype(int) - 1
-        mhw['duration_moderate'][ev] = np.sum(cats == 1.)
-        mhw['duration_strong'][ev] = np.sum(cats == 2.)
-        mhw['duration_severe'][ev] = np.sum(cats == 3.)
-        mhw['duration_extreme'][ev] = np.sum(cats >= 4.)
-        '''
+        category[ev] = min([pcat, 4]) - 1
+        duration_moderate[ev] = int(np.sum(cats == 1))
+        duration_strong[ev] = int(np.sum(cats == 2))
+        duration_severe[ev] = int(np.sum(cats == 3))
+        duration_extreme[ev] = int(np.sum(cats >= 4))
+
+        # Rates of onset and decline
+        # Requires getting MHW strength at "start" and "end" of event (continuous: assume start/end half-day before/after first/last point)
+        if tt_start > 0:
+            mhw_relSeas_start = 0.5*(mhw_relSeas[0] + temp[tt_start-1] - seas[tt_start-1])
+            rate_onset[ev] = (mhw_relSeas[tt_peak] - mhw_relSeas_start) / (tt_peak+0.5)
+        else: # MHW starts at beginning of time series
+            if tt_peak == 0: # Peak is also at begining of time series, assume onset time = 1 day
+                rate_onset[ev] = (mhw_relSeas[tt_peak] - mhw_relSeas[0]) / 1.
+            else:
+                rate_onset[ev] = (mhw_relSeas[tt_peak] - mhw_relSeas[0]) / tt_peak
+        if tt_end < len(t)-1:
+            mhw_relSeas_end = 0.5*(mhw_relSeas[-1] + temp[tt_end+1] - seas[tt_end+1])
+            rate_decline[ev] = (mhw_relSeas[tt_peak] - mhw_relSeas_end) / (tt_end-tt_start-tt_peak+0.5)
+        else: # MHW finishes at end of time series
+            if tt_peak == len(t)-1: # Peak is also at end of time series, assume decline time = 1 day
+                rate_decline[ev] = (mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / 1.
+            else:
+                rate_decline[ev] = (mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / (tt_end-tt_start-tt_peak)
 
 
