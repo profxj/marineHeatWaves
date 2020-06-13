@@ -21,9 +21,9 @@ from mhw import tmp_numba
 from IPython import embed
 
 
-def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data, pctile=90, minDuration=5,
-           joinAcrossGaps=True, maxGap=2, maxPadLength=False, coldSpells=False,
-                           parallel=True):
+def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_count, data,
+                           pctile=90, minDuration=5, joinAcrossGaps=True, maxGap=2, maxPadLength=False,
+                           coldSpells=False, parallel=True):
     '''
 
     Applies the Hobday et al. (2016) marine heat wave definition to an input time
@@ -475,12 +475,13 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data, p
                                       rate_onset, rate_decline)
 
     # Fill up data
-    data['time_start'][0][0:mhw['n_events']] = time_start
-    data['time_end'][0][0:mhw['n_events']] = time_end
+    data['time_start'][data_count][0:mhw['n_events']] = time_start
+    data['time_end'][data_count][0:mhw['n_events']] = time_end
+    data['n_events'][data_count][0] = mhw['n_events']
     for key in int_keys:
-        data[key][0][0:mhw['n_events']] = eval(key)
+        data[key][data_count][0:mhw['n_events']] = eval(key)
     for key in float_keys:
-        data[key][0][0:mhw['n_events']] = eval(key)
+        data[key][data_count][0:mhw['n_events']] = eval(key)
 
     '''
     # Rates of onset and decline
@@ -518,7 +519,7 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data, p
             mhw['intensity_mean_abs'][ev] = -1. * mhw['intensity_mean_abs'][ev]
             mhw['intensity_cumulative_abs'][ev] = -1. * mhw['intensity_cumulative_abs'][ev]
 
-    return mhw
+    return
 
 
 def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
