@@ -356,7 +356,7 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
 
     # Calculate marine heat wave properties
     mhw['n_events'] = len(mhw['time_start'])
-    categories = np.array(['Moderate', 'Strong', 'Severe', 'Extreme'])
+    #categories = np.array(['Moderate', 'Strong', 'Severe', 'Extreme'])
 
     # Init the rest
     int_keys = ['time_start', 'time_end', 'time_peak', 'duration', 'duration_moderate', 'duration_strong',
