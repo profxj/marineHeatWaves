@@ -13,6 +13,7 @@ from scipy import stats
 import scipy.ndimage as ndimage
 from datetime import date
 
+from mhw import utils
 
 def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
            smoothPercentile=True, smoothPercentileWidth=31, minDuration=5,
@@ -251,8 +252,8 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
 
     # Pad missing values for all consecutive missing blocks of length <= maxPadLength
     if maxPadLength:
-        temp = pad(temp, maxPadLength=maxPadLength)
-        tempClim = pad(tempClim, maxPadLength=maxPadLength)
+        temp = utils.pad(temp, maxPadLength=maxPadLength)
+        tempClim = utils.pad(tempClim, maxPadLength=maxPadLength)
 
     # Length of climatological year
     lenClimYear = 366
@@ -291,13 +292,13 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
         # If the length of year is < 365/366 (e.g. a 360 day year from a Climate Model)
         if Ly:
             valid = ~np.isnan(thresh_climYear)
-            thresh_climYear[valid] = runavg(thresh_climYear[valid], smoothPercentileWidth)
+            thresh_climYear[valid] = utils.runavg(thresh_climYear[valid], smoothPercentileWidth)
             valid = ~np.isnan(seas_climYear)
-            seas_climYear[valid] = runavg(seas_climYear[valid], smoothPercentileWidth)
+            seas_climYear[valid] = utils.runavg(seas_climYear[valid], smoothPercentileWidth)
         # >= 365-day year
         else:
-            thresh_climYear = runavg(thresh_climYear, smoothPercentileWidth)
-            seas_climYear = runavg(seas_climYear, smoothPercentileWidth)
+            thresh_climYear = utils.runavg(thresh_climYear, smoothPercentileWidth)
+            seas_climYear = utils.runavg(seas_climYear, smoothPercentileWidth)
 
     # Generate threshold for full time series
     clim['thresh'] = thresh_climYear[doy.astype(int)-1]
@@ -762,7 +763,7 @@ def meanTrend(mhwBlock, alpha=0.05):
         valid = ~np.isnan(y) # non-NaN indices
 
         # Perform linear regression over valid indices
-        if np.isinf(nonans(y).sum()): # If contains Inf values
+        if np.isinf(utils.nonans(y).sum()): # If contains Inf values
             beta = [np.nan, np.nan]
         elif np.sum(~np.isnan(y)) > 0: # If at least one non-NaN value
             beta = linalg.lstsq(X[valid,:], y[valid])[0]
@@ -857,71 +858,3 @@ def rank(t, mhw):
     # Return rank, return
     return rank, returnPeriod
 
-
-def runavg(ts, w):
-    '''
-
-    Performs a running average of an input time series using uniform window
-    of width w. This function assumes that the input time series is periodic.
-
-    Inputs:
-
-      ts            Time series [1D numpy array]
-      w             Integer length (must be odd) of running average window
-
-    Outputs:
-
-      ts_smooth     Smoothed time series
-
-    Written by Eric Oliver, Institue for Marine and Antarctic Studies, University of Tasmania, Feb-Mar 2015
-
-    '''
-    # Original length of ts
-    N = len(ts)
-    # make ts three-fold periodic
-    ts = np.append(ts, np.append(ts, ts))
-    # smooth by convolution with a window of equal weights
-    ts_smooth = np.convolve(ts, np.ones(w)/w, mode='same')
-    # Only output central section, of length equal to the original length of ts
-    ts = ts_smooth[N:2*N]
-
-    return ts
-
-
-def pad(data, maxPadLength=False):
-    '''
-
-    Linearly interpolate over missing data (NaNs) in a time series.
-
-    Inputs:
-
-      data	     Time series [1D numpy array]
-      maxPadLength   Specifies the maximum length over which to interpolate,
-                     i.e., any consecutive blocks of NaNs with length greater
-                     than maxPadLength will be left as NaN. Set as an integer.
-                     maxPadLength=False (default) interpolates over all NaNs.
-
-    Written by Eric Oliver, Institue for Marine and Antarctic Studies, University of Tasmania, Jun 2015
-
-    '''
-    data_padded = data.copy()
-    bad_indexes = np.isnan(data)
-    good_indexes = np.logical_not(bad_indexes)
-    good_data = data[good_indexes]
-    interpolated = np.interp(bad_indexes.nonzero()[0], good_indexes.nonzero()[0], good_data)
-    data_padded[bad_indexes] = interpolated
-    if maxPadLength:
-        blocks, n_blocks = ndimage.label(np.isnan(data))
-        for bl in range(1, n_blocks+1):
-            if (blocks==bl).sum() > maxPadLength:
-                data_padded[blocks==bl] = np.nan
-
-    return data_padded
-
-
-def nonans(array):
-    '''
-    Return input array [1D numpy array] with
-    all nan values removed
-    '''
-    return array[~np.isnan(array)]
