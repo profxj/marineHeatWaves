@@ -1,9 +1,5 @@
-'''
-
-    A set of functions which implement the Marine Heat Wave (MHW)
-    definition of Hobday et al. (2016)
-
-'''
+""" Climate calculations.
+"""
 
 
 import numpy as np
