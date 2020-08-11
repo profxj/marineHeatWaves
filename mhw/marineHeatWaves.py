@@ -7,16 +7,13 @@
 
 
 import numpy as np
-import scipy as sp
 from scipy import linalg
 from scipy import stats
 import scipy.ndimage as ndimage
 from datetime import date
 
-from numba import njit, prange
-
 from mhw import utils
-from mhw import tmp_numba
+from mhw import numba as mhw_numba
 
 from IPython import embed
 
@@ -25,10 +22,12 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
                            pctile=90, minDuration=5, joinAcrossGaps=True, maxGap=2, maxPadLength=False,
                            coldSpells=False, parallel=True):
     '''
-
     Applies the Hobday et al. (2016) marine heat wave definition to an input time
     series of temp ('temp') along with a time vector ('t'). Outputs properties of
     all detected marine heat waves.
+
+    Allows for major speed-up by using a pre-cooked climate
+    and also numba speed up
 
     Inputs:
 
@@ -151,102 +150,6 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
     mhw['time_end'] = []  # datetime format
     #mhw['time_peak'] = []  # datetime format
 
-    '''
-    mhw['date_start'] = []  # datetime format
-    mhw['date_end'] = []  # datetime format
-    mhw['date_peak'] = []  # datetime format
-    mhw['index_start'] = []
-    mhw['index_end'] = []
-    mhw['index_peak'] = []
-    mhw['duration'] = []  # [days]
-    mhw['duration_moderate'] = []  # [days]
-    mhw['duration_strong'] = []  # [days]
-    mhw['duration_severe'] = []  # [days]
-    mhw['duration_extreme'] = []  # [days]
-    mhw['intensity_max'] = []  # [deg C]
-    mhw['intensity_mean'] = []  # [deg C]
-    mhw['intensity_var'] = []  # [deg C]
-    mhw['intensity_cumulative'] = []  # [deg C]
-    mhw['intensity_max_relThresh'] = []  # [deg C]
-    mhw['intensity_mean_relThresh'] = []  # [deg C]
-    mhw['intensity_var_relThresh'] = []  # [deg C]
-    mhw['intensity_cumulative_relThresh'] = []  # [deg C]
-    mhw['intensity_max_abs'] = []  # [deg C]
-    mhw['intensity_mean_abs'] = []  # [deg C]
-    mhw['intensity_var_abs'] = []  # [deg C]
-    mhw['intensity_cumulative_abs'] = []  # [deg C]
-    mhw['category'] = []
-    mhw['rate_onset'] = []  # [deg C / day]
-    mhw['rate_decline'] = []  # [deg C / day]
-
-    #
-    # Time and dates vectors
-    #
-
-    # Generate vectors for year, month, day-of-month, and day-of-year
-    T = len(t)
-    year = np.zeros((T))
-    month = np.zeros((T))
-    day = np.zeros((T))
-    doy = np.zeros((T))
-    embed(header='190 of marine')
-    for i in range(T):
-        year[i] = date.fromordinal(t[i]).year
-        month[i] = date.fromordinal(t[i]).month
-        day[i] = date.fromordinal(t[i]).day
-    # Leap-year baseline for defining day-of-year values
-    year_leapYear = 2012  # This year was a leap-year and therefore doy in range of 1 to 366
-    t_leapYear = np.arange(date(year_leapYear, 1, 1).toordinal(), date(year_leapYear, 12, 31).toordinal() + 1)
-    dates_leapYear = [date.fromordinal(tt.astype(int)) for tt in t_leapYear]
-    month_leapYear = np.zeros((len(t_leapYear)))
-    day_leapYear = np.zeros((len(t_leapYear)))
-    doy_leapYear = np.zeros((len(t_leapYear)))
-    embed(header='202 of marine')
-    for tt in range(len(t_leapYear)):
-        month_leapYear[tt] = date.fromordinal(t_leapYear[tt]).month
-        day_leapYear[tt] = date.fromordinal(t_leapYear[tt]).day
-        doy_leapYear[tt] = t_leapYear[tt] - date(date.fromordinal(t_leapYear[tt]).year, 1, 1).toordinal() + 1
-    # Calculate day-of-year values
-    embed(header='208 of marine')
-    for tt in range(T):
-        doy[tt] = doy_leapYear[(month_leapYear == month[tt]) * (day_leapYear == day[tt])]
-
-    # Constants (doy values for Feb-28 and Feb-29) for handling leap-years
-    feb28 = 59
-    feb29 = 60
-
-    # Set climatology period, if unset use full range of available data
-    if (climatologyPeriod[0] is None) or (climatologyPeriod[1] is None):
-        climatologyPeriod[0] = year[0]
-        climatologyPeriod[1] = year[-1]
-
-    #
-    # Calculate threshold and seasonal climatology (varying with day-of-year)
-    #
-
-    # if alternate temperature time series is supplied for the calculation of the climatology
-    if alternateClimatology:
-        tClim = alternateClimatology[0]
-        tempClim = alternateClimatology[1]
-        TClim = len(tClim)
-        yearClim = np.zeros((TClim))
-        monthClim = np.zeros((TClim))
-        dayClim = np.zeros((TClim))
-        doyClim = np.zeros((TClim))
-        for i in range(TClim):
-            yearClim[i] = date.fromordinal(tClim[i]).year
-            monthClim[i] = date.fromordinal(tClim[i]).month
-            dayClim[i] = date.fromordinal(tClim[i]).day
-            doyClim[i] = doy_leapYear[(month_leapYear == monthClim[i]) * (day_leapYear == dayClim[i])]
-    else:
-        tempClim = temp.copy()
-        TClim = np.array([T]).copy()[0]
-        yearClim = year.copy()
-        monthClim = month.copy()
-        dayClim = day.copy()
-        doyClim = doy.copy()
-    '''
-
     # Flip temp time series if detecting cold spells
     if coldSpells:
         temp = -1. * temp
@@ -257,54 +160,6 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
         temp = utils.pad(temp, maxPadLength=maxPadLength)
         tempClim = utils.pad(tempClim, maxPadLength=maxPadLength)
 
-    '''
-    # Length of climatological year
-    lenClimYear = 366
-    # Start and end indices
-    clim_start = np.where(yearClim == climatologyPeriod[0])[0][0]
-    clim_end = np.where(yearClim == climatologyPeriod[1])[0][-1]
-    # Inialize arrays
-    thresh_climYear = np.NaN * np.zeros(lenClimYear)
-    seas_climYear = np.NaN * np.zeros(lenClimYear)
-    clim = {}
-    clim['thresh'] = np.NaN * np.zeros(TClim)
-    clim['seas'] = np.NaN * np.zeros(TClim)
-    # Loop over all day-of-year values, and calculate threshold and seasonal climatology across years
-    for d in range(1, lenClimYear + 1):
-        # Special case for Feb 29
-        if d == feb29:
-            continue
-        # find all indices for each day of the year +/- windowHalfWidth and from them calculate the threshold
-        tt0 = np.where(doyClim[clim_start:clim_end + 1] == d)[0]
-        # If this doy value does not exist (i.e. in 360-day calendars) then skip it
-        if len(tt0) == 0:
-            continue
-        tt = np.array([])
-        for w in range(-windowHalfWidth, windowHalfWidth + 1):
-            tt = np.append(tt, clim_start + tt0 + w)
-        tt = tt[tt >= 0]  # Reject indices "before" the first element
-        tt = tt[tt < TClim]  # Reject indices "after" the last element
-        thresh_climYear[d - 1] = np.nanpercentile(tempClim[tt.astype(int)], pctile)
-        seas_climYear[d - 1] = np.nanmean(tempClim[tt.astype(int)])
-    # Special case for Feb 29
-    thresh_climYear[feb29 - 1] = 0.5 * thresh_climYear[feb29 - 2] + 0.5 * thresh_climYear[feb29]
-    seas_climYear[feb29 - 1] = 0.5 * seas_climYear[feb29 - 2] + 0.5 * seas_climYear[feb29]
-    '''
-
-    '''
-    # Smooth if desired
-    if smoothPercentile:
-        # If the length of year is < 365/366 (e.g. a 360 day year from a Climate Model)
-        if Ly:
-            valid = ~np.isnan(thresh_climYear)
-            thresh_climYear[valid] = utils.runavg(thresh_climYear[valid], smoothPercentileWidth)
-            valid = ~np.isnan(seas_climYear)
-            seas_climYear[valid] = utils.runavg(seas_climYear[valid], smoothPercentileWidth)
-        # >= 365-day year
-        else:
-            thresh_climYear = utils.runavg(thresh_climYear, smoothPercentileWidth)
-            seas_climYear = utils.runavg(seas_climYear, smoothPercentileWidth)
-    '''
 
     # Generate threshold for full time series
     thresh = thresh_climYear[doy - 1]
@@ -366,32 +221,12 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
         float_keys += [key+'_relThresh', key+'_abs']
     float_keys += ['rate_onset', 'rate_decline']
 
-    '''
     # Init the array
-    dtypes = []
-
-    max_events = 1000
-    for key in int_keys:
-        #mhw[key] = np.zeros(mhw['n_events'], dtype='int')
-        dtypes += [(key, 'int32', (max_events))]
-    for key in float_keys:
-        #mhw[key] = np.zeros(mhw['n_events'])
-        dtypes += [(key, 'float32', (max_events))]
-    data = np.empty((1,), dtype=dtypes)
-
-    # Init
-    data['time_start'][0][0:mhw['n_events']] = np.array(mhw['time_start'])
-    data['time_end'][0][0:mhw['n_events']] = np.array(mhw['time_end'])
-    #embed(header='383 of marine')
-
-    time_start = data['time_start'][0].copy()
-    time_end = data['time_end'][0].copy()
-    time_peak = np.zeros_like(time_end)
-    '''
     time_start = np.array(mhw['time_start'], dtype='int32')
     time_end = np.array(mhw['time_end'], dtype='int32')
     time_peak = np.zeros_like(time_end)
     duration = np.zeros_like(time_end)
+
     # MHW Intensity metrics
     intensity_max = np.zeros_like(time_end, dtype='float32')
     intensity_mean = np.zeros_like(intensity_max)
@@ -420,10 +255,6 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
             # Get SST series during MHW event, relative to both threshold and to seasonal climatology
             tt_start = np.where(t == mhw['time_start'][ev])[0][0]
             tt_end = np.where(t == mhw['time_end'][ev])[0][0]
-            #mhw['date_start'].append(date.fromordinal(mhw['time_start'][ev]))
-            #mhw['date_end'].append(date.fromordinal(mhw['time_end'][ev]))
-            #mhw['index_start'].append(tt_start)
-            #mhw['index_end'].append(tt_end)
             temp_mhw = temp[tt_start:tt_end + 1]
             thresh_mhw = thresh[tt_start:tt_end + 1]
             seas_mhw = seas[tt_start:tt_end + 1]
@@ -435,8 +266,6 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
             # Find peak
             tt_peak = np.argmax(mhw_relSeas)
             mhw['time_peak'][ev] = mhw['time_start'][ev] + tt_peak
-            #mhw['date_peak'].append(date.fromordinal(mhw['time_start'][ev] + tt_peak))
-            #mhw['index_peak'].append(tt_start + tt_peak)
             # MHW Duration
             mhw['duration'][ev] = len(mhw_relSeas)
             # MHW Intensity metrics
@@ -462,17 +291,14 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
             mhw['duration_severe'][ev] = np.sum(cats == 3.)
             mhw['duration_extreme'][ev] = np.sum(cats >= 4.)
     else:
-        #tmp_numba.event_stats(mhw['n_events'], t, data, temp, thresh, seas)
-        #
-        #from importlib import reload
-        #reload(tmp_numba)
-        _ = tmp_numba.dev_event_stats(mhw['n_events'], t, temp, thresh, seas, time_start, time_end,
-                                      time_peak, duration, intensity_max, intensity_mean, intensity_var,
-                                      intensity_cumulative, intensity_max_relThresh, intensity_mean_relThresh,
-                                      intensity_var_relThresh, intensity_cumulative_relThresh, intensity_max_abs,
-                                      intensity_mean_abs, intensity_var_abs, intensity_cumulative_abs, category,
-                                      duration_moderate, duration_strong, duration_severe, duration_extreme,
-                                      rate_onset, rate_decline)
+        # Numba me
+        mhw_numba.event_stats(mhw['n_events'], t, temp, thresh, seas, time_start, time_end,
+                              time_peak, duration, intensity_max, intensity_mean, intensity_var,
+                              intensity_cumulative, intensity_max_relThresh, intensity_mean_relThresh,
+                              intensity_var_relThresh, intensity_cumulative_relThresh, intensity_max_abs,
+                              intensity_mean_abs, intensity_var_abs, intensity_cumulative_abs, category,
+                              duration_moderate, duration_strong, duration_severe, duration_extreme,
+                              rate_onset, rate_decline)
 
     # Fill up data
     data['time_start'][data_count][0:mhw['n_events']] = time_start
@@ -483,26 +309,6 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
     for key in float_keys:
         data[key][data_count][0:mhw['n_events']] = eval(key)
 
-    '''
-    # Rates of onset and decline
-    # Requires getting MHW strength at "start" and "end" of event (continuous: assume start/end half-day before/after first/last point)
-    if tt_start > 0:
-        mhw_relSeas_start = 0.5 * (mhw_relSeas[0] + temp[tt_start - 1] - clim['seas'][tt_start - 1])
-        mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas_start) / (tt_peak + 0.5))
-    else:  # MHW starts at beginning of time series
-        if tt_peak == 0:  # Peak is also at begining of time series, assume onset time = 1 day
-            mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas[0]) / 1.)
-        else:
-            mhw['rate_onset'].append((mhw_relSeas[tt_peak] - mhw_relSeas[0]) / tt_peak)
-    if tt_end < T - 1:
-        mhw_relSeas_end = 0.5 * (mhw_relSeas[-1] + temp[tt_end + 1] - clim['seas'][tt_end + 1])
-        mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas_end) / (tt_end - tt_start - tt_peak + 0.5))
-    else:  # MHW finishes at end of time series
-        if tt_peak == T - 1:  # Peak is also at end of time series, assume decline time = 1 day
-            mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / 1.)
-        else:
-            mhw['rate_decline'].append((mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / (tt_end - tt_start - tt_peak))
-    '''
 
     # Flip climatology and intensties in case of cold spell detection
     if coldSpells:
