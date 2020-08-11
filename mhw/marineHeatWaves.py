@@ -33,7 +33,10 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
 
       t       Time vector, in datetime format (e.g., date(1982,1,1).toordinal())
               [1D numpy array of length T of type int]
+      doy     Day of year
       temp    Temperature vector [1D numpy array of length T]
+      seas_climYear    Seasonal SST values
+      thresh_climYear  Threshold (90%) SST values
 
     Outputs:
 
@@ -162,6 +165,7 @@ def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_co
 
 
     # Generate threshold for full time series
+    # TODO - Make sure Leap days are dealt with correctly
     thresh = thresh_climYear[doy - 1]
     seas = seas_climYear[doy - 1]
 

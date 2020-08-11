@@ -4,6 +4,8 @@ import numpy as np
 import scipy.ndimage as ndimage
 from datetime import date
 
+import iris
+
 def calc_doy(t):
     # Generate vectors for year, month, day-of-month, and day-of-year
     T = len(t)
@@ -100,3 +102,65 @@ def nonans(array):
     all nan values removed
     '''
     return array[~np.isnan(array)]
+
+
+def load_noaa_sst(sst_files):
+    """
+
+    Args:
+        sst_files (list):
+
+    Returns:
+        list:  iris Cube objects
+
+    """
+    all_sst = []
+    for ifile in sst_files:
+        print(ifile)  # For progress
+        cubes = iris.load(ifile)
+        sst = cubes[0]
+        # Get out of lazy
+        _ = sst.data
+        # Append
+        all_sst.append(sst)
+    #
+    return all_sst
+
+def grab_t(sst_list):
+    """
+    Grab the times
+
+    Parameters
+    ----------
+    sst_list (list): List of SST cube's
+
+    Returns
+    -------
+    allts : numpy.ndarray of toordinals (int)
+
+    """
+
+    allts = []
+    for sst in sst_list:
+        allts += (sst.coord('time').points + 657072).astype(int).tolist()  # 1880?
+    return np.array(allts)
+
+def grab_T(sst_list, i, j):
+    """
+    Grab a list of SST values
+
+    Parameters
+    ----------
+    sst_list : list of SST cube's
+    i : int
+    j : int
+
+    Returns
+    -------
+    allTs : masked numpy.ndarray of SST values
+
+    """
+    allTs = []
+    for sst in sst_list:
+        allTs += [sst.data[:,i,j]]
+    return np.ma.concatenate(allTs)
