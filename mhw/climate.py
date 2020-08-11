@@ -226,7 +226,7 @@ if __name__ == '__main__':
 
     # Full Climate 1983-2019
     if True:
-        noaa_seas_thresh('/home/xavier/Projects/Oceanography/MHW/db/NOAA_OI_climate_1983-2019.nc',
+        noaa_seas_thresh('/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_1983-2019.nc',
                          climatologyPeriod=(1983, 2019),
                          cut_sky=False)
 
