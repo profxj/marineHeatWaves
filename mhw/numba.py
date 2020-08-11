@@ -141,3 +141,24 @@ def event_stats(n_events, t, temp, thresh, seas, time_start, time_end,
                 rate_decline[ev] = (mhw_relSeas[tt_peak] - mhw_relSeas[-1]) / (tt_end-tt_start-tt_peak)
 
 
+@njit(parallel=True)
+def calc_clim(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW,
+         TClim, thresh_climYear, tempClim, pctile, seas_climYear):
+
+    ones = np.array([1]*nwHW) #np.ones(nwHW).astype(int)
+    #for _d in range(1,lenClimYear+1):
+    for _d in prange(1,lenClimYear+1):
+        # Special case for Feb 29
+        if _d == feb29:
+            continue
+        # find all indices for each day of the year +/- windowHalfWidth and from them calculate the threshold
+        tt0 = np.where(doyClim[clim_start:clim_end+1] == _d)[0]
+        # If this doy value does not exist (i.e. in 360-day calendars) then skip it
+        if len(tt0) == 0:
+            continue
+        # Main calculation
+        tt = (wHW_array[0:len(tt0),:] + np.outer(tt0, ones)).flatten()
+        gd = (tt >= 0) & (tt<TClim)
+        tt = tt[gd] # Reject indices "after" the last element
+        thresh_climYear[_d-1] = np.nanpercentile(tempClim[tt], pctile)
+        seas_climYear[_d-1] = np.nanmean(tempClim[tt])
