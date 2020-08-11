@@ -10,7 +10,7 @@ from datetime import date
 import iris
 
 from mhw import utils as mhw_utils
-from mhw import numba as mhw_numba
+from mhw import mhw_numba
 
 from IPython import embed
 
