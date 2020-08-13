@@ -155,6 +155,7 @@ def noaa_seas_thresh(climate_db_file,
         SST -= scls
         mhw_numba.calc_clim(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW,
                      TClim, thresh_climYear, SST, pctile, seas_climYear)
+        # Leap day
         thresh_climYear[feb29 - 1] = 0.5 * thresh_climYear[feb29 - 2] + 0.5 * thresh_climYear[feb29]
         seas_climYear[feb29 - 1] = 0.5 * seas_climYear[feb29 - 2] + 0.5 * seas_climYear[feb29]
 
@@ -337,11 +338,20 @@ if __name__ == '__main__':
 
     # Median SSTa (savgol)
     if False:
-        noaa_median_sst('../data/climate/noaa_median_climate_1983_2019.hdf', years=(1983,2019))
+        noaa_median_sst('data/climate/noaa_median_climate_1983_2019.hdf', years=(1983,2019))
 
     # Test
-    if True:
-        scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate', 'noaa_median_climate_1983_2012.hdf')
+    if False:
+        scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
+                                  'noaa_median_climate_1983_2012.hdf')
         noaa_seas_thresh('test_scaled.nc',
                          climatologyPeriod=(1983, 1985),
                          cut_sky=False, scale_file=scale_file)
+    # Full
+    if False:
+        scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
+                                  'noaa_median_climate_1983_2019.hdf')
+        noaa_seas_thresh(
+            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
+            climatologyPeriod=(1983, 2019),
+            cut_sky=False, scale_file=scale_file)
