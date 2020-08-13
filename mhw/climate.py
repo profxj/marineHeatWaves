@@ -320,6 +320,7 @@ def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True
 
     # Save pandas
     pd_tbl.to_hdf(outfile, 'median_climate', mode='w')
+    print("Wrote: {}".format(outfile))
 
 # Command line execution
 if __name__ == '__main__':
