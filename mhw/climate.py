@@ -190,6 +190,7 @@ def noaa_seas_thresh(climate_db_file,
             cubes.append(cube_thresh)
             # Write
             iris.save(cubes, climate_db_file, zlib=True)
+            print("Wrote: {}".format(climate_db_file))
 
     print("All done!!")
 

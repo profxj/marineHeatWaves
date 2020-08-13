@@ -268,7 +268,7 @@ if __name__ == '__main__':
         #                    (1982,2019), cut_sky=False, append=False)
 
         # Scaled seasonalT, thresholdT
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
+        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary.db',
              (1983,2019),
              climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
              scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
