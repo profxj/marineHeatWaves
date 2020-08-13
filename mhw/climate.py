@@ -349,7 +349,7 @@ if __name__ == '__main__':
                          climatologyPeriod=(1983, 1985),
                          cut_sky=False, scale_file=scale_file)
     # Full
-    if False:
+    if True:
         scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
                                   'noaa_median_climate_1983_2019.hdf')
         noaa_seas_thresh(
