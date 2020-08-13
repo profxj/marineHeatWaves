@@ -18,7 +18,7 @@ from mhw import numba as mhw_numba
 from IPython import embed
 
 
-def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_count, data,
+def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data_count, data,
                            pctile=90, minDuration=5, joinAcrossGaps=True, maxGap=2, maxPadLength=False,
                            coldSpells=False, parallel=True):
     '''

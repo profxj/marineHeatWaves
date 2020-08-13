@@ -74,6 +74,7 @@ def noaa_seas_thresh(climate_db_file,
     t = mhw_utils.grab_t(all_sst)
     time_dict = build_time_dict(t)
 
+    # Scaling
     scls = np.zeros_like(t).astype(float)
     if scale_file is not None:
         # Use scales

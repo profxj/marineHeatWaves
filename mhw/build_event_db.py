@@ -2,6 +2,8 @@
 import glob
 import os
 import numpy as np
+from pkg_resources import resource_filename
+import datetime
 
 import sqlalchemy
 from datetime import date
@@ -12,7 +14,7 @@ from mhw import utils as mhw_utils
 import iris
 
 def main(dbfile, years, noaa_path=None, climate_cube_file=None,
-             cut_sky=False, all_sst=None, min_frac=0.9, scale_climate=False,
+             cut_sky=False, all_sst=None, min_frac=0.9, scale_file=None,
              n_calc=None, append=False, seas_climYear=None, thresh_climYear=None):
     """
     Generate an MHW Event database
@@ -23,7 +25,8 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         Output filename for the SQL database
     years : tuple
         Start, end year of database.  Inclusive
-    noaa_path
+    noaa_path : str, optional
+        If None, taken from $NOAA_OI
     climate_cube_file
     cut_sky : bool, optional
     all_sst
@@ -32,9 +35,10 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
     append
     seas_climYear
     thresh_climYear
-    scale_climate : bool, optional
-        if True, scale the climate by the varying climate as recorded
-        in the noaa_climate.hdf pandas Table
+    scale_file : str, optional
+        if set, scale the climate by the varying climate as recorded
+        in the provided NOAA pandas Table
+        One should also be using a varying climate_cube_file
 
     Returns
     -------
@@ -56,7 +60,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         _ = thresh_climYear.data[:]
 
     # Grab the list of SST V2 files
-    all_sst_files = glob.glob(noaa_path + 'sst*nc')
+    all_sst_files = glob.glob(os.path.join(noaa_path, 'sst*nc'))
     all_sst_files.sort()
     # Cut on years
     if '1981' not in all_sst_files[0]:
@@ -79,6 +83,15 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
     # Time
     t = mhw_utils.grab_t(all_sst)
     doy = mhw_utils.calc_doy(t)
+
+    # Scaling
+    scls = np.zeros_like(t).astype(float)
+    if scale_file is not None:
+        # Use scales
+        scale_tbl = pandas.read_hdf(scale_file, 'median_climate')
+        for kk, it in enumerate(t):
+            mtch = np.where(scale_tbl.index.to_pydatetime() == datetime.datetime.fromordinal(it))[0][0]
+            scls[kk] = scale_tbl.medSSTa_savgol[mtch]
 
     # Setup for output
     # ints -- all are days
@@ -168,18 +181,18 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         SST = mhw_utils.grab_T(all_sst, ilat, jlon)
         frac = np.sum(np.invert(SST.mask))/t.size
         if SST.mask is np.bool_(False) or frac > min_frac:
-            # Scale seasonal?
-            if scale_climate:
-            else:
-                pass
+            # Scale
+            assert SST.size == scls.size # Be wary of masking
+            SST -= scls
             # Run
-            marineHeatWaves.detect_without_climate(t, doy, SST.flatten(),
+            marineHeatWaves.detect_with_input_climate(t, doy, SST.flatten(),
                                                    seas_climYear.data[:, ilat, jlon].flatten(),
                                                    thresh_climYear.data[:, ilat, jlon].flatten(),
                                                    sub_count, data)
         else:
             nmask += 1
 
+        # Save to db
         if (sub_count == 999) or (counter == n_calc):
             # Write
             final_tbl = None
@@ -232,17 +245,30 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
     print("All done!!")
 
 
-
-
-
 # Command line execution
 if __name__ == '__main__':
 
+    # Test
     if True:
+        # Scaled seasonalT, thresholdT
+        main('tst.db',
+             (1983,2015),
+             climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
+             scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
+                                     'noaa_median_climate_1983_2019.hdf'),
+             cut_sky=False, append=False)
+
+    # Full runs
+    if False:
         # Default run to match Oliver (+ a few extra years)
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
-                            (1982,2019), cut_sky=False, append=False)
+        #main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
+        #                    (1982,2019), cut_sky=False, append=False)
+
         # Scaled seasonalT, thresholdT
         main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
-                            (1982,2019), cut_sky=False, append=False)
+             (1982,2019),
+             climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
+             scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
+                                     'noaa_median_climate_1983_2019.hdf'),
+             cut_sky=False, append=False)
 
