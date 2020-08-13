@@ -13,6 +13,8 @@ from mhw import marineHeatWaves
 from mhw import utils as mhw_utils
 import iris
 
+from IPython import embed
+
 def main(dbfile, years, noaa_path=None, climate_cube_file=None,
              cut_sky=False, all_sst=None, min_frac=0.9, scale_file=None,
              n_calc=None, append=False, seas_climYear=None, thresh_climYear=None):
@@ -125,6 +127,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
     # Start the db's
     if os.path.isfile(dbfile) and not append:
         # BE CAREFUL!!
+        print("REMOVE THAT DBFILE!!")
         import pdb; pdb.set_trace()  # No longer an option
         os.remove(dbfile)
 
@@ -249,24 +252,24 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
 if __name__ == '__main__':
 
     # Test
-    if True:
+    if False:
         # Scaled seasonalT, thresholdT
         main('tst.db',
-             (1983,2015),
-             climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
+             (1983,1985),
+             #climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
              scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
                                      'noaa_median_climate_1983_2019.hdf'),
              cut_sky=False, append=False)
 
     # Full runs
-    if False:
+    if True:
         # Default run to match Oliver (+ a few extra years)
         #main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
         #                    (1982,2019), cut_sky=False, append=False)
 
         # Scaled seasonalT, thresholdT
         main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
-             (1982,2019),
+             (1983,2019),
              climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
              scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
                                      'noaa_median_climate_1983_2019.hdf'),

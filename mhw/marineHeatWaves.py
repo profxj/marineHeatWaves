@@ -13,7 +13,7 @@ import scipy.ndimage as ndimage
 from datetime import date
 
 from mhw import utils
-from mhw import numba as mhw_numba
+from mhw import mhw_numba
 
 from IPython import embed
 
