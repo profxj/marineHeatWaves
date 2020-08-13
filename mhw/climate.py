@@ -51,7 +51,7 @@ def noaa_seas_thresh(climate_db_file,
         noaa_path = os.getenv("NOAA_OI")
 
     # Grab the list of SST V2 files
-    all_sst_files = glob.glob(noaa_path + 'sst*nc')
+    all_sst_files = glob.glob(os.path.join(noaa_path, 'sst*nc'))
     all_sst_files.sort()
     # Cut on years
     if '1981' not in all_sst_files[0]:
