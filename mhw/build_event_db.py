@@ -246,6 +246,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
             counter, n_calc, nmask, tot_events))
 
     print("All done!!")
+    print("See {}".format(dbfile))
 
 
 # Command line execution
