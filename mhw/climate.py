@@ -351,10 +351,13 @@ if __name__ == '__main__':
                          climatologyPeriod=(1983, 1985),
                          cut_sky=False, scale_file=scale_file)
     # Full
-    if True:
+    if False:
         scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
                                   'noaa_median_climate_1983_2019.hdf')
         noaa_seas_thresh(
             '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
             climatologyPeriod=(1983, 2019),
             cut_sky=False, scale_file=scale_file)
+
+    # NCEP testing
+    ncep_seas_thresh('ncep_tst.nc')
