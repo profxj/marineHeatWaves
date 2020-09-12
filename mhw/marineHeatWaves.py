@@ -7,13 +7,326 @@
 
 
 import numpy as np
-import scipy as sp
 from scipy import linalg
 from scipy import stats
 import scipy.ndimage as ndimage
 from datetime import date
 
 from mhw import utils
+from mhw import numba as mhw_numba
+
+from IPython import embed
+
+
+def detect_without_climate(t, doy, temp, seas_climYear, thresh_climYear, data_count, data,
+                           pctile=90, minDuration=5, joinAcrossGaps=True, maxGap=2, maxPadLength=False,
+                           coldSpells=False, parallel=True):
+    '''
+    Applies the Hobday et al. (2016) marine heat wave definition to an input time
+    series of temp ('temp') along with a time vector ('t'). Outputs properties of
+    all detected marine heat waves.
+
+    Allows for major speed-up by using a pre-cooked climate
+    and also numba speed up
+
+    Inputs:
+
+      t       Time vector, in datetime format (e.g., date(1982,1,1).toordinal())
+              [1D numpy array of length T of type int]
+      temp    Temperature vector [1D numpy array of length T]
+
+    Outputs:
+
+      mhw     Detected marine heat waves (MHWs). Each key (following list) is a
+              list of length N where N is the number of detected MHWs:
+
+        'time_start'           Start time of MHW [datetime format]
+        'time_end'             End time of MHW [datetime format]
+        'time_peak'            Time of MHW peak [datetime format]
+        'date_start'           Start date of MHW [datetime format]
+        'date_end'             End date of MHW [datetime format]
+        'date_peak'            Date of MHW peak [datetime format]
+        'index_start'          Start index of MHW
+        'index_end'            End index of MHW
+        'index_peak'           Index of MHW peak
+        'duration'             Duration of MHW [days]
+        'intensity_max'        Maximum (peak) intensity [deg. C]
+        'intensity_mean'       Mean intensity [deg. C]
+        'intensity_var'        Intensity variability [deg. C]
+        'intensity_cumulative' Cumulative intensity [deg. C x days]
+        'rate_onset'           Onset rate of MHW [deg. C / days]
+        'rate_decline'         Decline rate of MHW [deg. C / days]
+
+        'intensity_max_relThresh', 'intensity_mean_relThresh', 'intensity_var_relThresh',
+        and 'intensity_cumulative_relThresh' are as above except relative to the
+        threshold (e.g., 90th percentile) rather than the seasonal climatology
+
+        'intensity_max_abs', 'intensity_mean_abs', 'intensity_var_abs', and
+        'intensity_cumulative_abs' are as above except as absolute magnitudes
+        rather than relative to the seasonal climatology or threshold
+
+        'category' is an integer category system (1, 2, 3, 4) based on the maximum intensity
+        in multiples of threshold exceedances, i.e., a value of 1 indicates the MHW
+        intensity (relative to the climatology) was >=1 times the value of the threshold (but
+        less than 2 times; relative to climatology, i.e., threshold - climatology).
+        Category types are defined as 1=strong, 2=moderate, 3=severe, 4=extreme. More details in
+        Hobday et al. (in prep., Oceanography). Also supplied are the duration of each of these
+        categories for each event.
+
+        'n_events'             A scalar integer (not a list) indicating the total
+                               number of detected MHW events
+
+    Options:
+
+      climatologyPeriod      Period over which climatology is calculated, specified
+                             as list of start and end years. Default is to calculate
+                             over the full range of years in the supplied time series.
+                             Alternate periods suppled as a list e.g. [1983,2012].
+      pctile                 Threshold percentile (%) for detection of extreme values
+                             (DEFAULT = 90)
+      windowHalfWidth        Width of window (one sided) about day-of-year used for
+                             the pooling of values and calculation of threshold percentile
+                             (DEFAULT = 5 [days])
+      smoothPercentile       Boolean switch indicating whether to smooth the threshold
+                             percentile timeseries with a moving average (DEFAULT = True)
+      smoothPercentileWidth  Width of moving average window for smoothing threshold
+                             (DEFAULT = 31 [days])
+      minDuration            Minimum duration for acceptance detected MHWs
+                             (DEFAULT = 5 [days])
+      joinAcrossGaps         Boolean switch indicating whether to join MHWs
+                             which occur before/after a short gap (DEFAULT = True)
+      maxGap                 Maximum length of gap allowed for the joining of MHWs
+                             (DEFAULT = 2 [days])
+      maxPadLength           Specifies the maximum length [days] over which to interpolate
+                             (pad) missing data (specified as nans) in input temp time series.
+                             i.e., any consecutive blocks of NaNs with length greater
+                             than maxPadLength will be left as NaN. Set as an integer.
+                             (DEFAULT = False, interpolates over all missing values).
+      coldSpells             Specifies if the code should detect cold events instead of
+                             heat events. (DEFAULT = False)
+      alternateClimatology   Specifies an alternate temperature time series to use for the
+                             calculation of the climatology. Format is as a list of numpy
+                             arrays: (1) the first element of the list is a time vector,
+                             in datetime format (e.g., date(1982,1,1).toordinal())
+                             [1D numpy array of length TClim] and (2) the second element of
+                             the list is a temperature vector [1D numpy array of length TClim].
+                             (DEFAULT = False)
+      Ly                     Specifies if the length of the year is < 365/366 days (e.g. a
+                             360 day year from a climate model). This affects the calculation
+                             of the climatology. (DEFAULT = False)
+
+    Notes:
+
+      1. This function assumes that the input time series consist of continuous daily values
+         with few missing values. Time ranges which start and end part-way through the calendar
+         year are supported.
+
+      2. This function supports leap years. This is done by ignoring Feb 29s for the initial
+         calculation of the climatology and threshold. The value of these for Feb 29 is then
+         linearly interpolated from the values for Feb 28 and Mar 1.
+
+      3. The calculation of onset and decline rates assumes that the heat wave started a half-day
+         before the start day and ended a half-day after the end-day. (This is consistent with the
+         duration definition as implemented, which assumes duration = end day - start day + 1.)
+
+      4. For the purposes of MHW detection, any missing temp values not interpolated over (through
+         optional maxPadLLength) will be set equal to the seasonal climatology. This means they will
+         trigger the end/start of any adjacent temp values which satisfy the MHW criteria.
+
+      5. If the code is used to detect cold events (coldSpells = True), then it works just as for heat
+         waves except that events are detected as deviations below the (100 - pctile)th percentile
+         (e.g., the 10th instead of 90th) for at least 5 days. Intensities are reported as negative
+         values and represent the temperature anomaly below climatology.
+
+    Written by Eric Oliver, Institue for Marine and Antarctic Studies, University of Tasmania, Feb 2015
+
+    '''
+
+    #
+    # Initialize MHW output variable
+    #
+    mhw = {}
+    mhw['time_start'] = []  # datetime format
+    mhw['time_end'] = []  # datetime format
+    #mhw['time_peak'] = []  # datetime format
+
+    # Flip temp time series if detecting cold spells
+    if coldSpells:
+        temp = -1. * temp
+        tempClim = -1. * tempClim
+
+    # Pad missing values for all consecutive missing blocks of length <= maxPadLength
+    if maxPadLength:
+        temp = utils.pad(temp, maxPadLength=maxPadLength)
+        tempClim = utils.pad(tempClim, maxPadLength=maxPadLength)
+
+
+    # Generate threshold for full time series
+    thresh = thresh_climYear[doy - 1]
+    seas = seas_climYear[doy - 1]
+
+    # Set all remaining missing temp values equal to the climatology
+    temp[np.isnan(temp)] = seas[np.isnan(temp)]
+
+    #
+    # Find MHWs as exceedances above the threshold
+    #
+
+    # Time series of "True" when threshold is exceeded, "False" otherwise
+    exceed_bool = temp - thresh
+    exceed_bool[exceed_bool <= 0] = False
+    exceed_bool[exceed_bool > 0] = True
+    # Fix issue where missing temp vaues (nan) are counted as True
+    exceed_bool[np.isnan(exceed_bool)] = False
+    # Find contiguous regions of exceed_bool = True
+    events, n_events = ndimage.label(exceed_bool)
+
+    # Find all MHW events of duration >= minDuration
+    for ev in range(1, n_events + 1):
+        match = events == ev
+        event_duration = match.sum()
+        if event_duration < minDuration:
+            continue
+        idx = np.where(match)[0]
+        mhw['time_start'].append(t[idx[0]])
+        mhw['time_end'].append(t[idx[-1]])
+
+    # Link heat waves that occur before and after a short gap (gap must be no longer than maxGap)
+    if joinAcrossGaps:
+        # Calculate gap length for each consecutive pair of events
+        gaps = np.array(mhw['time_start'][1:]) - np.array(mhw['time_end'][0:-1]) - 1
+        if len(gaps) > 0:
+            while gaps.min() <= maxGap:
+                # Find first short gap
+                ev = np.where(gaps <= maxGap)[0][0]
+                # Extend first MHW to encompass second MHW (including gap)
+                mhw['time_end'][ev] = mhw['time_end'][ev + 1]
+                # Remove second event from record
+                del mhw['time_start'][ev + 1]
+                del mhw['time_end'][ev + 1]
+                # Calculate gap length for each consecutive pair of events
+                gaps = np.array(mhw['time_start'][1:]) - np.array(mhw['time_end'][0:-1]) - 1
+                if len(gaps) == 0:
+                    break
+
+    # Calculate marine heat wave properties
+    mhw['n_events'] = len(mhw['time_start'])
+    #categories = np.array(['Moderate', 'Strong', 'Severe', 'Extreme'])
+
+    # Init the rest
+    int_keys = ['time_start', 'time_end', 'time_peak', 'duration', 'duration_moderate', 'duration_strong',
+                'duration_severe', 'duration_extreme', 'category']
+    float_keys = ['intensity_max', 'intensity_mean', 'intensity_var', 'intensity_cumulative']
+    for key in float_keys.copy():
+        float_keys += [key+'_relThresh', key+'_abs']
+    float_keys += ['rate_onset', 'rate_decline']
+
+    # Init the array
+    time_start = np.array(mhw['time_start'], dtype='int32')
+    time_end = np.array(mhw['time_end'], dtype='int32')
+    time_peak = np.zeros_like(time_end)
+    duration = np.zeros_like(time_end)
+
+    # MHW Intensity metrics
+    intensity_max = np.zeros_like(time_end, dtype='float32')
+    intensity_mean = np.zeros_like(intensity_max)
+    intensity_var = np.zeros_like(intensity_max)
+    intensity_cumulative = np.zeros_like(intensity_max)
+    intensity_max_relThresh = np.zeros_like(intensity_max)
+    intensity_mean_relThresh = np.zeros_like(intensity_max)
+    intensity_var_relThresh = np.zeros_like(intensity_max)
+    intensity_cumulative_relThresh = np.zeros_like(intensity_max)
+    intensity_max_abs = np.zeros_like(intensity_max)
+    intensity_mean_abs = np.zeros_like(intensity_max)
+    intensity_var_abs = np.zeros_like(intensity_max)
+    intensity_cumulative_abs = np.zeros_like(intensity_max)
+    rate_onset = np.zeros_like(intensity_max)
+    rate_decline = np.zeros_like(intensity_max)
+    #
+    category = np.zeros_like(time_end)
+    duration_moderate = np.zeros_like(time_end)
+    duration_strong = np.zeros_like(time_end)
+    duration_severe = np.zeros_like(time_end)
+    duration_extreme = np.zeros_like(time_end)
+
+
+    if not parallel:
+        for ev in range(mhw['n_events']):
+            # Get SST series during MHW event, relative to both threshold and to seasonal climatology
+            tt_start = np.where(t == mhw['time_start'][ev])[0][0]
+            tt_end = np.where(t == mhw['time_end'][ev])[0][0]
+            temp_mhw = temp[tt_start:tt_end + 1]
+            thresh_mhw = thresh[tt_start:tt_end + 1]
+            seas_mhw = seas[tt_start:tt_end + 1]
+            mhw_relSeas = temp_mhw - seas_mhw
+            mhw_relThresh = temp_mhw - thresh_mhw
+            mhw_relThreshNorm = (temp_mhw - thresh_mhw) / (thresh_mhw - seas_mhw)
+            mhw_abs = temp_mhw
+
+            # Find peak
+            tt_peak = np.argmax(mhw_relSeas)
+            mhw['time_peak'][ev] = mhw['time_start'][ev] + tt_peak
+            # MHW Duration
+            mhw['duration'][ev] = len(mhw_relSeas)
+            # MHW Intensity metrics
+            mhw['intensity_max'][ev] = mhw_relSeas[tt_peak]
+            mhw['intensity_mean'][ev] = mhw_relSeas.mean()
+            mhw['intensity_var'][ev] = np.sqrt(mhw_relSeas.var())
+            mhw['intensity_cumulative'][ev] = mhw_relSeas.sum()
+            mhw['intensity_max_relThresh'][ev] = mhw_relThresh[tt_peak]
+            mhw['intensity_mean_relThresh'][ev] = mhw_relThresh.mean()
+            mhw['intensity_var_relThresh'][ev] = np.sqrt(mhw_relThresh.var())
+            mhw['intensity_cumulative_relThresh'][ev] = mhw_relThresh.sum()
+            mhw['intensity_max_abs'][ev] = mhw_abs[tt_peak]
+            mhw['intensity_mean_abs'][ev] = mhw_abs.mean()
+            mhw['intensity_var_abs'][ev] = np.sqrt(mhw_abs.var())
+            mhw['intensity_cumulative_abs'][ev] = mhw_abs.sum()
+            # Fix categories
+            tt_peakCat = np.argmax(mhw_relThreshNorm)
+            cats = np.floor(1. + mhw_relThreshNorm)
+            #mhw['category'][ev] = categories[np.min([cats[tt_peakCat], 4]).astype(int) - 1]
+            mhw['category'][ev] = np.min([cats[tt_peakCat], 4]).astype(int) - 1
+            mhw['duration_moderate'][ev] = np.sum(cats == 1.)
+            mhw['duration_strong'][ev] = np.sum(cats == 2.)
+            mhw['duration_severe'][ev] = np.sum(cats == 3.)
+            mhw['duration_extreme'][ev] = np.sum(cats >= 4.)
+    else:
+        # Numba me
+        mhw_numba.event_stats(mhw['n_events'], t, temp, thresh, seas, time_start, time_end,
+                              time_peak, duration, intensity_max, intensity_mean, intensity_var,
+                              intensity_cumulative, intensity_max_relThresh, intensity_mean_relThresh,
+                              intensity_var_relThresh, intensity_cumulative_relThresh, intensity_max_abs,
+                              intensity_mean_abs, intensity_var_abs, intensity_cumulative_abs, category,
+                              duration_moderate, duration_strong, duration_severe, duration_extreme,
+                              rate_onset, rate_decline)
+
+    # Fill up data
+    data['time_start'][data_count][0:mhw['n_events']] = time_start
+    data['time_end'][data_count][0:mhw['n_events']] = time_end
+    data['n_events'][data_count][0] = mhw['n_events']
+    for key in int_keys:
+        data[key][data_count][0:mhw['n_events']] = eval(key)
+    for key in float_keys:
+        data[key][data_count][0:mhw['n_events']] = eval(key)
+
+
+    # Flip climatology and intensties in case of cold spell detection
+    if coldSpells:
+        clim['seas'] = -1. * clim['seas']
+        clim['thresh'] = -1. * clim['thresh']
+        for ev in range(len(mhw['intensity_max'])):
+            mhw['intensity_max'][ev] = -1. * mhw['intensity_max'][ev]
+            mhw['intensity_mean'][ev] = -1. * mhw['intensity_mean'][ev]
+            mhw['intensity_cumulative'][ev] = -1. * mhw['intensity_cumulative'][ev]
+            mhw['intensity_max_relThresh'][ev] = -1. * mhw['intensity_max_relThresh'][ev]
+            mhw['intensity_mean_relThresh'][ev] = -1. * mhw['intensity_mean_relThresh'][ev]
+            mhw['intensity_cumulative_relThresh'][ev] = -1. * mhw['intensity_cumulative_relThresh'][ev]
+            mhw['intensity_max_abs'][ev] = -1. * mhw['intensity_max_abs'][ev]
+            mhw['intensity_mean_abs'][ev] = -1. * mhw['intensity_mean_abs'][ev]
+            mhw['intensity_cumulative_abs'][ev] = -1. * mhw['intensity_cumulative_abs'][ev]
+
+    return
+
 
 def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
            smoothPercentile=True, smoothPercentileWidth=31, minDuration=5,
@@ -283,6 +596,8 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
         tt = tt[tt<TClim] # Reject indices "after" the last element
         thresh_climYear[d-1] = np.nanpercentile(tempClim[tt.astype(int)], pctile)
         seas_climYear[d-1] = np.nanmean(tempClim[tt.astype(int)])
+        if d == 353:
+            embed(header='729 of detect')
     # Special case for Feb 29
     thresh_climYear[feb29-1] = 0.5*thresh_climYear[feb29-2] + 0.5*thresh_climYear[feb29]
     seas_climYear[feb29-1] = 0.5*seas_climYear[feb29-2] + 0.5*seas_climYear[feb29]
@@ -303,6 +618,7 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
     # Generate threshold for full time series
     clim['thresh'] = thresh_climYear[doy.astype(int)-1]
     clim['seas'] = seas_climYear[doy.astype(int)-1]
+    clim['doy'] = doy.astype(int)
 
     # Save vector indicating which points in temp are missing values
     clim['missing'] = np.isnan(temp)
@@ -329,6 +645,8 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
             continue
         mhw['time_start'].append(t[np.where(events == ev)[0][0]])
         mhw['time_end'].append(t[np.where(events == ev)[0][-1]])
+        #if mhw['time_start'][-1] ==726855:
+        #    import pdb; pdb.set_trace()
 
     # Link heat waves that occur before and after a short gap (gap must be no longer than maxGap)
     if joinAcrossGaps:
@@ -347,7 +665,6 @@ def detect(t, temp, climatologyPeriod=[None,None], pctile=90, windowHalfWidth=5,
                 gaps = np.array(mhw['time_start'][1:]) - np.array(mhw['time_end'][0:-1]) - 1
                 if len(gaps) == 0:
                     break
-
     # Calculate marine heat wave properties
     mhw['n_events'] = len(mhw['time_start'])
     categories = np.array(['Moderate', 'Strong', 'Severe', 'Extreme'])
