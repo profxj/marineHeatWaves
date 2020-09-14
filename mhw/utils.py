@@ -4,7 +4,7 @@ import numpy as np
 import scipy.ndimage as ndimage
 from datetime import date
 
-import iris
+import xarray
 
 def calc_doy(t):
     # Generate vectors for year, month, day-of-month, and day-of-year
@@ -111,28 +111,30 @@ def load_noaa_sst(sst_files):
         sst_files (list):
 
     Returns:
-        list:  iris Cube objects
+        tuple:  lat_coord, lon_coord, np.array of toordials, list of masked SST
 
     """
     all_sst = []
+    allts = []
     for ifile in sst_files:
         print(ifile)  # For progress
-        cubes = iris.load(ifile)
-        sst = cubes[0]
-        # Get out of lazy
-        _ = sst.data
-        # Append
-        all_sst.append(sst)
+        ds = xarray.load_dataset(ifile)
+        datetimes = ds.time.values.astype('datetime64[s]').tolist()
+        t = [datetime.toordinal() for datetime in datetimes]
+        allts += t
+        # Append as a masked array
+        all_sst.append(ds.sst.to_masked_array())
     #
-    return all_sst
+    return ds.lat, ds.lon, np.array(allts), all_sst
 
-def grab_t(sst_list):
+'''
+def grab_t(ds_list):
     """
     Grab the times
 
     Parameters
     ----------
-    sst_list (list): List of SST cube's
+    ds_list (list): List of xarray DataSets
 
     Returns
     -------
@@ -141,26 +143,32 @@ def grab_t(sst_list):
     """
 
     allts = []
-    for sst in sst_list:
-        allts += (sst.coord('time').points + 657072).astype(int).tolist()  # 1880?
+    # For iris
+    #for sst in sst_list:
+    #    allts += (sst.coord('time').points + 657072).astype(int).tolist()  # 1880?
+    for ds in ds_list:
+        datetimes = ds.time.values.astype('datetime64[s]').tolist()
+        t = [datetime.toordinal() for datetime in datetimes]
+        allts += t
     return np.array(allts)
+'''
 
 def grab_T(sst_list, i, j):
     """
-    Grab a list of SST values
+    Grab an array of SST values
 
     Parameters
     ----------
-    sst_list : list of SST cube's
+    sst_list : list of masked np.array
     i : int
     j : int
 
     Returns
     -------
-    allTs : masked numpy.ndarray of SST values
+    allTs : numpy.ndarray of SST values with nan
 
     """
     allTs = []
     for sst in sst_list:
-        allTs += [sst.data[:,i,j]]
+        allTs += [sst[:,i,j]]
     return np.ma.concatenate(allTs)

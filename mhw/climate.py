@@ -12,7 +12,8 @@ from datetime import date
 import datetime
 
 import pandas
-import iris
+import xarray
+#import iris
 
 from mhw import utils as mhw_utils
 from mhw import mhw_numba
@@ -64,14 +65,14 @@ def noaa_seas_thresh(climate_db_file,
         all_sst_files = all_sst_files[istart:iend]
 
         print("Loading up the files. Be patient...")
-        all_sst = mhw_utils.load_noaa_sst(all_sst_files)
-
-    # Coords
-    lat_coord = all_sst[0].coord('latitude')
-    lon_coord = all_sst[0].coord('longitude')
+        lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(all_sst_files)
+    else:
+        # Kludge
+        import pdb; pdb.set_trace()
+        ds = xarray.load_dataset(all_sst_files[0])
+        lat_coord, lon_coord = ds.lat, ds.lon
 
     # Time
-    t = mhw_utils.grab_t(all_sst)
     time_dict = build_time_dict(t)
 
     # Scaling
@@ -176,20 +177,28 @@ def noaa_seas_thresh(climate_db_file,
         if (counter % 100000 == 0) or (counter == n_calc):
             print('count={} of {}.'.format(counter, n_calc))
             print("Saving...")
-            cubes = iris.cube.CubeList()
-            time_coord = iris.coords.DimCoord(np.arange(lenClimYear), units='day', var_name='day')
-            cube_seas = iris.cube.Cube(out_seas, units='degC', var_name='seasonalT',
-                                       dim_coords_and_dims=[(time_coord, 0),
-                                                            (lat_coord, 1),
-                                                            (lon_coord, 2)])
-            cube_thresh = iris.cube.Cube(out_thresh, units='degC', var_name='threshT',
-                                         dim_coords_and_dims=[(time_coord, 0),
-                                                              (lat_coord, 1),
-                                                              (lon_coord, 2)])
-            cubes.append(cube_seas)
-            cubes.append(cube_thresh)
+            time_coord = xarray.IndexVariable('doy', np.arange(366, dtype=int) + 1)
+            da_seasonal = xarray.DataArray(out_seas, coords=[time_coord, lat_coord, lon_coord])
+            da_thresh = xarray.DataArray(out_thresh, coords=[time_coord, lat_coord, lon_coord])
+            #time_coord = iris.coords.DimCoord(np.arange(lenClimYear), units='day', var_name='day')
+            #cube_seas = iris.cube.Cube(out_seas, units='degC', var_name='seasonalT',
+            #                           dim_coords_and_dims=[(time_coord, 0),
+            #                                                (lat_coord, 1),
+            #                                                (lon_coord, 2)])
+            #cube_thresh = iris.cube.Cube(out_thresh, units='degC', var_name='threshT',
+            #                             dim_coords_and_dims=[(time_coord, 0),
+            #                                                  (lat_coord, 1),
+            #                                                  (lon_coord, 2)])
+            #cubes.append(cube_seas)
+            #cubes.append(cube_thresh)
+            ## Write
+            #iris.save(cubes, climate_db_file, zlib=True)
+            # Data set
+            climate_ds = xarray.Dataset({"seasonalT": da_seasonal,
+                                         "threshT": da_thresh})
             # Write
-            iris.save(cubes, climate_db_file, zlib=True)
+            climate_ds.to_netcdf(climate_db_file)#, encoding=encoding)
+
             print("Wrote: {}".format(climate_db_file))
 
     print("All done!!")
@@ -327,6 +336,11 @@ def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True
 # Command line execution
 if __name__ == '__main__':
 
+    # Test
+    if True:
+        noaa_seas_thresh('test.nc',
+                         climatologyPeriod=(1983, 1988),
+                         cut_sky=False)
     # Traditional Climate
     if False:
         noaa_seas_thresh('/home/xavier/Projects/Oceanography/MHWs/db/NOAA_OI_climate_1983-2012.nc',
@@ -359,5 +373,3 @@ if __name__ == '__main__':
             climatologyPeriod=(1983, 2019),
             cut_sky=False, scale_file=scale_file)
 
-    # NCEP testing
-    ncep_seas_thresh('ncep_tst.nc')
