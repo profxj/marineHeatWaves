@@ -118,7 +118,7 @@ def load_noaa_sst(sst_files):
     allts = []
     for ifile in sst_files:
         print(ifile)  # For progress
-        ds = xarray.load_dataset(ifile)
+        ds = xarray.open_dataset(ifile)
         datetimes = ds.time.values.astype('datetime64[s]').tolist()
         t = [datetime.toordinal() for datetime in datetimes]
         allts += t
