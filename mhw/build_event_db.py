@@ -11,7 +11,6 @@ import pandas
 
 from mhw import marineHeatWaves
 from mhw import utils as mhw_utils
-import iris
 
 from IPython import embed
 
@@ -29,7 +28,8 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         Start, end year of database.  Inclusive
     noaa_path : str, optional
         If None, taken from $NOAA_OI
-    climate_cube_file
+    climate_cube_file : str, optional
+        File including the T threshold from climatology
     cut_sky : bool, optional
     all_sst
     min_frac
@@ -40,7 +40,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
     scale_file : str, optional
         if set, scale the climate by the varying climate as recorded
         in the provided NOAA pandas Table
-        One should also be using a varying climate_cube_file
+        Note: One should also be using a varying climate_cube_file
 
     Returns
     -------
@@ -269,10 +269,17 @@ if __name__ == '__main__':
         #                    (1982,2019), cut_sky=False, append=False)
 
         # Scaled seasonalT, thresholdT
+        #main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary.db',
+        #     (1983,2019),
+        #     climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
+        #     scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
+        #                             'noaa_median_climate_1983_2019.hdf'),
+        #     cut_sky=False, append=False)
+
+        # T95 + scaled
         main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary.db',
              (1983,2019),
              climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
              scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
                                      'noaa_median_climate_1983_2019.hdf'),
              cut_sky=False, append=False)
-

@@ -26,6 +26,7 @@ def noaa_seas_thresh(climate_db_file,
                      climatologyPeriod=(1983, 2012),
                      cut_sky=True, all_sst=None,
                      scale_file=None,
+                     pctile=90.,
                      min_frac=0.9, n_calc=None, debug=False):
     """
     Build climate model for NOAA OI data
@@ -39,7 +40,10 @@ def noaa_seas_thresh(climate_db_file,
     climatologyPeriod
     cut_sky
     all_sst
-    min_frac
+    pctile : float, optional
+        Percentile for T threshold
+    min_frac : float
+        Minimum fraction required for analysis
     n_calc
     debug
 
@@ -133,7 +137,6 @@ def noaa_seas_thresh(climate_db_file,
     # Smoothing
     smoothPercentile = True
     smoothPercentileWidth = 31
-    pctile = 90
 
     # Main loop
     while (counter < n_calc):
@@ -337,7 +340,7 @@ def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True
 if __name__ == '__main__':
 
     # Test
-    if True:
+    if False:
         noaa_seas_thresh('test.nc',
                          climatologyPeriod=(1983, 1988),
                          cut_sky=False)
@@ -347,7 +350,7 @@ if __name__ == '__main__':
                          climatologyPeriod=(1983, 2012),
                          cut_sky=False)
 
-    # Full Climate 1983-2019
+    # Full Climate 1983-2019; not scaled
     if False:
         noaa_seas_thresh('/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_1983-2019.nc',
                          climatologyPeriod=(1983, 2019),
@@ -357,14 +360,14 @@ if __name__ == '__main__':
     if False:
         noaa_median_sst('data/climate/noaa_median_climate_1983_2019.hdf', years=(1983,2019))
 
-    # Test
+    # Test scaled
     if False:
         scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
                                   'noaa_median_climate_1983_2012.hdf')
         noaa_seas_thresh('test_scaled.nc',
                          climatologyPeriod=(1983, 1985),
                          cut_sky=False, scale_file=scale_file)
-    # Full
+    # Full; scaled
     if False:
         scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
                                   'noaa_median_climate_1983_2019.hdf')
@@ -373,3 +376,18 @@ if __name__ == '__main__':
             climatologyPeriod=(1983, 2019),
             cut_sky=False, scale_file=scale_file)
 
+    # 95 percentile
+    if True:
+        pctile = 95.
+        # Full Climate 1983-2019, 95th precentile; not scaled
+        noaa_seas_thresh('/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_1983-2019_95.nc',
+                         climatologyPeriod=(1983, 2019),
+                         cut_sky=False, pctile=pctile)
+
+        # scaled
+        scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
+                                  'noaa_median_climate_1983_2019.hdf')
+        noaa_seas_thresh(
+            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019_95.nc',
+            climatologyPeriod=(1983, 2019),
+            cut_sky=False, scale_file=scale_file, pctile=pctile)

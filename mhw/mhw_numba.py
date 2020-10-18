@@ -145,6 +145,26 @@ def event_stats(n_events, t, temp, thresh, seas, time_start, time_end,
 @njit(parallel=True)
 def calc_clim(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW,
          TClim, thresh_climYear, tempClim, pctile, seas_climYear):
+    """
+
+    Args:
+        lenClimYear:
+        feb29:
+        doyClim:
+        clim_start:
+        clim_end:
+        wHW_array:
+        nwHW:
+        TClim:
+        thresh_climYear:
+        tempClim:
+        pctile (float):
+            Percentile for threshold
+        seas_climYear:
+
+    Returns:
+
+    """
 
     ones = np.array([1]*nwHW) #np.ones(nwHW).astype(int)
     #for _d in range(1,lenClimYear+1):
