@@ -8,6 +8,7 @@ import datetime
 import sqlalchemy
 from datetime import date
 import pandas
+import xarray
 
 from mhw import marineHeatWaves
 from mhw import utils as mhw_utils
@@ -15,8 +16,9 @@ from mhw import utils as mhw_utils
 from IPython import embed
 
 def main(dbfile, years, noaa_path=None, climate_cube_file=None,
-             cut_sky=False, all_sst=None, min_frac=0.9, scale_file=None,
-             n_calc=None, append=False, seas_climYear=None, thresh_climYear=None):
+         cut_sky=False, all_sst=None, min_frac=0.9, scale_file=None,
+         n_calc=None, append=False, seas_climYear=None, thresh_climYear=None,
+         nsub=9999, coldSpells=False):
     """
     Generate an MHW Event database
 
@@ -41,6 +43,8 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         if set, scale the climate by the varying climate as recorded
         in the provided NOAA pandas Table
         Note: One should also be using a varying climate_cube_file
+    coldSpells : bool, optional
+        If True, search for Cold spells, not Heat Wave events
 
     Returns
     -------
@@ -55,8 +59,9 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         climate_cube_file = os.path.join(noaa_path, 'NOAA_OI_climate_1983-2012.nc')
     if seas_climYear is None or thresh_climYear is None:
         print("Loading the climate: {}".format(climate_cube_file))
-        seas_climYear = iris.load(climate_cube_file, 'seasonalT')[0]
-        thresh_climYear = iris.load(climate_cube_file, 'threshT')[0]
+        ds = xarray.open_dataset(climate_cube_file)
+        seas_climYear = ds.seasonalT
+        thresh_climYear = ds.threshT
         # No lazy
         _ = seas_climYear.data[:]
         _ = thresh_climYear.data[:]
@@ -75,15 +80,15 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         all_sst_files = all_sst_files[istart:iend]
 
         print("Loading up the files. Be patient...")
-        all_sst = mhw_utils.load_noaa_sst(all_sst_files)
+        lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(all_sst_files)
+    else:
+        embed(header='Should load these from load_noaa_sst not build these')
+        # Coords
+        lat_coord, lon_coord = seas_climYear.lat.data, seas_climYear.lon.data
+        # Time
+        t = mhw_utils.grab_t(all_sst)
 
-    # Coords
-    lat_coord = all_sst[0].coord('latitude')
-    lon_coord = all_sst[0].coord('longitude')
-    #events_coord = iris.coords.DimCoord(np.arange(100), var_name='events')
-
-    # Time
-    t = mhw_utils.grab_t(all_sst)
+    # Day of year
     doy = mhw_utils.calc_doy(t)
 
     # Scaling
@@ -142,8 +147,8 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         result = connection.execute(query).fetchall()[-1]
         last_lat, last_lon = result[12:14]
         # Indices
-        last_ilat = np.where(lat_coord.points == last_lat)[0][0]
-        last_jlon = np.where(lon_coord.points == last_lon)[0][0]
+        last_ilat = np.where(lat_coord.data == last_lat)[0][0]
+        last_jlon = np.where(lon_coord.data == last_lon)[0][0]
 
     # Main loop
     if cut_sky:
@@ -163,6 +168,12 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         counter = np.where((ii_grid == last_ilat) & (jj_grid == last_jlon))[0][0]
     else:
         counter = 0
+
+    # Cold spells?
+    if coldSpells:
+        isign = -1.
+    else:
+        isign = 1.
 
     # Main loop
     sub_count = 0
@@ -188,15 +199,15 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
             assert SST.size == scls.size # Be wary of masking
             SST -= scls
             # Run
-            marineHeatWaves.detect_with_input_climate(t, doy, SST.flatten(),
-                                                   seas_climYear.data[:, ilat, jlon].flatten(),
-                                                   thresh_climYear.data[:, ilat, jlon].flatten(),
+            marineHeatWaves.detect_with_input_climate(t, doy, isign*SST.flatten(),
+                                                   isign*seas_climYear.data[:, ilat, jlon].flatten(),
+                                                   isign*thresh_climYear.data[:, ilat, jlon].flatten(),
                                                    sub_count, data)
         else:
             nmask += 1
 
         # Save to db
-        if (sub_count == 999) or (counter == n_calc):
+        if (sub_count == nsub) or (counter == n_calc):
             # Write
             final_tbl = None
             for kk, iilat, jjlon in zip(range(sub_count), ilats, jlons):
@@ -214,8 +225,8 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
                     # Time
                     sub_tbl['date'] = pandas.to_datetime([date.fromordinal(tt) for tt in sub_tbl['time_start']])
                     # Lat, lon
-                    sub_tbl['lat'] = [lat_coord[iilat].points[0]] * nevent
-                    sub_tbl['lon'] = [lon_coord[jjlon].points[0]] * nevent
+                    sub_tbl['lat'] = [lat_coord.data[iilat]] * nevent
+                    sub_tbl['lon'] = [lon_coord.data[jjlon]] * nevent
                     # Floats
                     float_dict = {}
                     for key in float_keys:
@@ -277,9 +288,9 @@ if __name__ == '__main__':
         #     cut_sky=False, append=False)
 
         # T95 + scaled
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary.db',
+        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary_95.db',
              (1983,2019),
-             climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
+             climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019_95.nc',
              scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
                                      'noaa_median_climate_1983_2019.hdf'),
              cut_sky=False, append=False)

@@ -19,7 +19,7 @@ from IPython import embed
 
 
 def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data_count, data,
-                           pctile=90, minDuration=5, joinAcrossGaps=True, maxGap=2, maxPadLength=False,
+                           minDuration=5, joinAcrossGaps=True, maxGap=2, maxPadLength=False,
                            coldSpells=False, parallel=True):
     '''
     Applies the Hobday et al. (2016) marine heat wave definition to an input time
@@ -85,8 +85,6 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
                              as list of start and end years. Default is to calculate
                              over the full range of years in the supplied time series.
                              Alternate periods suppled as a list e.g. [1983,2012].
-      pctile                 Threshold percentile (%) for detection of extreme values
-                             (DEFAULT = 90)
       windowHalfWidth        Width of window (one sided) about day-of-year used for
                              the pooling of values and calculation of threshold percentile
                              (DEFAULT = 5 [days])
@@ -316,8 +314,6 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
 
     # Flip climatology and intensties in case of cold spell detection
     if coldSpells:
-        clim['seas'] = -1. * clim['seas']
-        clim['thresh'] = -1. * clim['thresh']
         for ev in range(len(mhw['intensity_max'])):
             mhw['intensity_max'][ev] = -1. * mhw['intensity_max'][ev]
             mhw['intensity_mean'][ev] = -1. * mhw['intensity_mean'][ev]

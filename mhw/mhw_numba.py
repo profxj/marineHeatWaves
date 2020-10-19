@@ -47,7 +47,8 @@ def event_stats(n_events, t, temp, thresh, seas, time_start, time_end,
     t
     temp
     thresh
-    seas
+    seas : np.ndarray
+        Seasonal average temperature
     time_start
     time_end
     time_peak
