@@ -19,7 +19,7 @@ from IPython import embed
 
 
 def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data_count, data,
-                           minDuration=5, joinAcrossGaps=True, maxGap=2, maxPadLength=False,
+                           minDuration=5, joinAcrossGaps=True, maxGap=2,
                            coldSpells=False, parallel=True):
     '''
     Applies the Hobday et al. (2016) marine heat wave definition to an input time
@@ -98,11 +98,6 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
                              which occur before/after a short gap (DEFAULT = True)
       maxGap                 Maximum length of gap allowed for the joining of MHWs
                              (DEFAULT = 2 [days])
-      maxPadLength           Specifies the maximum length [days] over which to interpolate
-                             (pad) missing data (specified as nans) in input temp time series.
-                             i.e., any consecutive blocks of NaNs with length greater
-                             than maxPadLength will be left as NaN. Set as an integer.
-                             (DEFAULT = False, interpolates over all missing values).
       coldSpells             Specifies if the code should detect cold events instead of
                              heat events. (DEFAULT = False)
       alternateClimatology   Specifies an alternate temperature time series to use for the
@@ -151,6 +146,8 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
     mhw['time_end'] = []  # datetime format
     #mhw['time_peak'] = []  # datetime format
 
+    # We input cold spells as negative SST
+    '''
     # Flip temp time series if detecting cold spells
     if coldSpells:
         temp = -1. * temp
@@ -160,6 +157,7 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
     if maxPadLength:
         temp = utils.pad(temp, maxPadLength=maxPadLength)
         tempClim = utils.pad(tempClim, maxPadLength=maxPadLength)
+    '''
 
 
     # Generate threshold for full time series
@@ -303,6 +301,7 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
                               rate_onset, rate_decline)
 
     # Fill up data
+    embed(header='304 of mhwvs')
     data['time_start'][data_count][0:mhw['n_events']] = time_start
     data['time_end'][data_count][0:mhw['n_events']] = time_end
     data['n_events'][data_count][0] = mhw['n_events']

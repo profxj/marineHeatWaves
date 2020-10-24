@@ -199,10 +199,12 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
             assert SST.size == scls.size # Be wary of masking
             SST -= scls
             # Run
-            marineHeatWaves.detect_with_input_climate(t, doy, isign*SST.flatten(),
-                                                   isign*seas_climYear.data[:, ilat, jlon].flatten(),
-                                                   isign*thresh_climYear.data[:, ilat, jlon].flatten(),
-                                                   sub_count, data)
+            embed(header='202 of build event')
+            marineHeatWaves.detect_with_input_climate(t, doy,
+                                                      isign*SST.flatten(),
+                                                      isign*seas_climYear.data[:, ilat, jlon].flatten(),
+                                                      isign*thresh_climYear.data[:, ilat, jlon].flatten(),
+                                                      sub_count, data)
         else:
             nmask += 1
 
@@ -264,33 +266,49 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
 if __name__ == '__main__':
 
     # Test
-    if False:
+    if True:
         # Scaled seasonalT, thresholdT
+        '''
         main('tst.db',
              (1983,1985),
              #climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
              scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
                                      'noaa_median_climate_1983_2019.hdf'),
              cut_sky=False, append=False)
+        '''
 
-    # Full runs
-    if True:
+        # T10 (Cold waves!)
+        main('tst.db', (1983,1985), cut_sky=False, append=False, coldSpells=True,
+             climate_cube_file=os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))
+
+        # Full runs
+    if False:
         # Default run to match Oliver (+ a few extra years)
-        #main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
-        #                    (1982,2019), cut_sky=False, append=False)
+        '''
+        main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
+                            (1982,2019), cut_sky=False, append=False)
+        '''
 
         # Scaled seasonalT, thresholdT
-        #main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary.db',
-        #     (1983,2019),
-        #     climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
-        #     scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
-        #                             'noaa_median_climate_1983_2019.hdf'),
-        #     cut_sky=False, append=False)
+        '''
+        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary.db',
+             (1983,2019),
+             climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
+             scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
+                                     'noaa_median_climate_1983_2019.hdf'),
+             cut_sky=False, append=False)
+        '''
 
         # T95 + scaled
+        '''
         main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary_95.db',
              (1983,2019),
              climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019_95.nc',
              scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
                                      'noaa_median_climate_1983_2019.hdf'),
              cut_sky=False, append=False)
+        '''
+
+        # T10 (Cold waves!)
+        main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
+             (1983,2019), cut_sky=False, append=False)
