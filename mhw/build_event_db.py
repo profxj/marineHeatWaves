@@ -33,10 +33,13 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
     climate_cube_file : str, optional
         File including the T threshold from climatology
     cut_sky : bool, optional
+        Use a subset of the sky for testing
     all_sst
     min_frac
     n_calc
     append
+    nsub : int, optional
+        How many patches to analyze before writing to disk
     seas_climYear
     thresh_climYear
     scale_file : str, optional
@@ -119,7 +122,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         dtypes += [(key, 'int32', (max_events))]
     for key in float_keys:
         dtypes += [(key, 'float32', (max_events))]
-    data = np.empty((1000,), dtype=dtypes)
+    data = np.empty((nsub,), dtype=dtypes)
 
     def init_data(idata):
         for key in int_keys:
@@ -199,7 +202,6 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
             assert SST.size == scls.size # Be wary of masking
             SST -= scls
             # Run
-            embed(header='202 of build event')
             marineHeatWaves.detect_with_input_climate(t, doy,
                                                       isign*SST.flatten(),
                                                       isign*seas_climYear.data[:, ilat, jlon].flatten(),
@@ -209,7 +211,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
             nmask += 1
 
         # Save to db
-        if (sub_count == nsub) or (counter == n_calc):
+        if (sub_count == nsub-1) or (counter == n_calc):
             # Write
             final_tbl = None
             for kk, iilat, jjlon in zip(range(sub_count), ilats, jlons):
@@ -266,7 +268,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
 if __name__ == '__main__':
 
     # Test
-    if True:
+    if False:
         # Scaled seasonalT, thresholdT
         '''
         main('tst.db',
@@ -278,11 +280,12 @@ if __name__ == '__main__':
         '''
 
         # T10 (Cold waves!)
-        main('tst.db', (1983,1985), cut_sky=False, append=False, coldSpells=True,
+        main('tst.db', (1983,1985), cut_sky=True, append=False, coldSpells=True,
+             nsub=1000,
              climate_cube_file=os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))
 
         # Full runs
-    if False:
+    if True:
         # Default run to match Oliver (+ a few extra years)
         '''
         main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
@@ -310,5 +313,6 @@ if __name__ == '__main__':
         '''
 
         # T10 (Cold waves!)
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
-             (1983,2019), cut_sky=False, append=False)
+        main('/home/xavier/Projects/Oceanography/MHW/db/mcws_allsky_defaults.db',
+             (1983,2019), cut_sky=False, append=False, coldSpells=True,
+             climate_cube_file = os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))

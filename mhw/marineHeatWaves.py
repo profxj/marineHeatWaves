@@ -301,7 +301,6 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
                               rate_onset, rate_decline)
 
     # Fill up data
-    embed(header='304 of mhwvs')
     data['time_start'][data_count][0:mhw['n_events']] = time_start
     data['time_end'][data_count][0:mhw['n_events']] = time_end
     data['n_events'][data_count][0] = mhw['n_events']
