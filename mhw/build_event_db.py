@@ -313,6 +313,6 @@ if __name__ == '__main__':
         '''
 
         # T10 (Cold waves!)
-        main('/home/xavier/Projects/Oceanography/MHW/db/mcws_allsky_defaults.db',
+        main('/home/xavier/Projects/Oceanography/MHW/db/mcs_allsky_defaults.db',
              (1983,2019), cut_sky=False, append=False, coldSpells=True,
              climate_cube_file = os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))
