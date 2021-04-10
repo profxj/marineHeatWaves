@@ -149,18 +149,18 @@ def calc_clim(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW
     """
 
     Args:
-        lenClimYear:
-        feb29:
-        doyClim:
-        clim_start:
-        clim_end:
+        lenClimYear (int):
+        feb29 (int):
+            Should be 60
+        doyClim (np.ndarray): Array of doy
+        clim_start (int):  Should be 0
+        clim_end (int):  Should be size of doyClim
         wHW_array:
         nwHW:
-        TClim:
+        TClim (int): size of doyClim
         thresh_climYear:
-        tempClim:
-        pctile (float):
-            Percentile for threshold
+        tempClim (np.ndarray): SST values
+        pctile (float): Percentile for threshold
         seas_climYear:
 
     Returns:

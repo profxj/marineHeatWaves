@@ -44,6 +44,7 @@ def noaa_seas_thresh(climate_db_file,
         Percentile for T threshold
     min_frac : float
         Minimum fraction required for analysis
+    scale_file : str, optional
     n_calc
     debug
 
@@ -158,8 +159,10 @@ def noaa_seas_thresh(climate_db_file,
 
         # Work it
         SST -= scls
-        mhw_numba.calc_clim(lenClimYear, feb29, doyClim, clim_start, clim_end, wHW_array, nwHW,
-                     TClim, thresh_climYear, SST, pctile, seas_climYear)
+        mhw_numba.calc_clim(lenClimYear, feb29, doyClim, clim_start, 
+                            clim_end, wHW_array, nwHW, TClim, 
+                            thresh_climYear, SST, pctile, 
+                            seas_climYear)
         # Leap day
         thresh_climYear[feb29 - 1] = 0.5 * thresh_climYear[feb29 - 2] + 0.5 * thresh_climYear[feb29]
         seas_climYear[feb29 - 1] = 0.5 * seas_climYear[feb29 - 2] + 0.5 * seas_climYear[feb29]
