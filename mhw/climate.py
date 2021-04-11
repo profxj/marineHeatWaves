@@ -3,6 +3,7 @@
 
 import os
 import glob
+from IPython.core.magic_arguments import MagicHelpFormatter
 from pkg_resources import resource_filename
 
 import numpy as np
@@ -37,20 +38,23 @@ def noaa_seas_thresh(climate_db_file,
         output filename.  Should have extension .nc
     noaa_path : str, optional
         Path to NOAA OI SST files
-    climatologyPeriod
-    cut_sky
-    all_sst
+        Defults to os.getenv("NOAA_OI")
+    climatologyPeriod : tuple, optional
+        Range of years defining the climatology; inclusive
+    cut_sky : bool, optional
+        Used for debugging
+    all_sst : list, optional
+        Loaded SST data. For debugging
     pctile : float, optional
         Percentile for T threshold
     min_frac : float
         Minimum fraction required for analysis
     scale_file : str, optional
-    n_calc
-    debug
-
-    Returns
-    -------
-
+        Used to remove the overall trend in SST warming
+    n_calc : int, optional
+        Used for debugging
+    debug : bool, optional
+        Turn on debugging
     """
     # Path
     if noaa_path is None:
@@ -177,8 +181,6 @@ def noaa_seas_thresh(climate_db_file,
         out_seas[:, ilat, jlon] = seas_climYear
         out_thresh[:, ilat, jlon] = thresh_climYear
 
-        # Count
-
         # Cubes
         if (counter % 100000 == 0) or (counter == n_calc):
             print('count={} of {}.'.format(counter, n_calc))
@@ -186,19 +188,6 @@ def noaa_seas_thresh(climate_db_file,
             time_coord = xarray.IndexVariable('doy', np.arange(366, dtype=int) + 1)
             da_seasonal = xarray.DataArray(out_seas, coords=[time_coord, lat_coord, lon_coord])
             da_thresh = xarray.DataArray(out_thresh, coords=[time_coord, lat_coord, lon_coord])
-            #time_coord = iris.coords.DimCoord(np.arange(lenClimYear), units='day', var_name='day')
-            #cube_seas = iris.cube.Cube(out_seas, units='degC', var_name='seasonalT',
-            #                           dim_coords_and_dims=[(time_coord, 0),
-            #                                                (lat_coord, 1),
-            #                                                (lon_coord, 2)])
-            #cube_thresh = iris.cube.Cube(out_thresh, units='degC', var_name='threshT',
-            #                             dim_coords_and_dims=[(time_coord, 0),
-            #                                                  (lat_coord, 1),
-            #                                                  (lon_coord, 2)])
-            #cubes.append(cube_seas)
-            #cubes.append(cube_thresh)
-            ## Write
-            #iris.save(cubes, climate_db_file, zlib=True)
             # Data set
             climate_ds = xarray.Dataset({"seasonalT": da_seasonal,
                                          "threshT": da_thresh})
@@ -217,7 +206,8 @@ def build_time_dict(t):
 
     Parameters
     ----------
-    t
+    t : np.ndarray
+        Array or ordinal values of time
 
     Returns
     -------
@@ -257,26 +247,34 @@ def build_time_dict(t):
 
     return times
 
-def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True):
+def noaa_median_sst(outfile, climate_file=None, 
+                    years=(1983, 2019), check=True):
     """
+    Calculate the global ocean's SST evolution across
+    the time period.
+    
+    Filter with a savgol and write to disk
 
     Parameters
     ----------
-    outfile
-    climate_file
-    years
-    check
-
-    Returns
-    -------
+    outfile : str
+        Output file of the goga
+    climate_file : str, optional
+        Climatology file to be analyzed
+        Default is NOAA_OI_climate_1983-2019.nc
+    years : tuple, optional
+        Years to analyze
+    check : bool, optional
+        Debug?
 
     """
-    feb29 = 60
+    feb29 = 60  
     # Load
     if climate_file is None:
-        climate_file = os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019.nc')
-    seasonalT = iris.load(climate_file, 'seasonalT')[0]
-    sT_data = seasonalT.data[:]
+        climate_file = os.path.join(os.getenv('NOAA_OI'), 
+                                    'NOAA_OI_climate_1983-2019.nc')
+    ds = xarray.open_dataset(climate_file)
+    sT_data = ds.seasonalT.values
 
     # Run it
     sv_yr, sv_dy, sv_medSST, sv_medSSTa = [], [], [], []
@@ -284,9 +282,9 @@ def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True
         print('year={}'.format(year))
         # Load
         noaa_file = os.path.join(os.getenv('NOAA_OI'), 'sst.day.mean.{}.nc'.format(year))
-        sst_cube = iris.load(noaa_file, 'sst')[0]
+        sst_ds = xarray.open_dataset(noaa_file)
+        SST = sst_ds.sst.to_masked_array()
         # Loop on days
-        SST = sst_cube.data[:]
         for day in range(SST.shape[0]):
             # print('day={}'.format(day))
             SSTd = SST[day, :, :]
@@ -333,10 +331,11 @@ def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True
         ax.set_xlabel('Year')
         #
         plt.show()
-        embed(header='312 of climate')
+        embed(header='334 of climate')
 
     # Save pandas
-    pd_tbl.to_hdf(outfile, 'median_climate', mode='w')
+    pd_tbl.to_parquet(outfile)#, 'median_climate', mode='w')
+    #pd_tbl.to_hdf(outfile, 'median_climate', mode='w')
     print("Wrote: {}".format(outfile))
 
 # Command line execution
@@ -362,6 +361,12 @@ if __name__ == '__main__':
     # Median SSTa (savgol)
     if False:
         noaa_median_sst('data/climate/noaa_median_climate_1983_2019.hdf', years=(1983,2019))
+        # TEST
+        #climate_file = os.path.join(os.getenv('NOAA_OI'), 
+        #                            'NOAA_OI_climate_1983-2012.nc')
+        #noaa_median_sst('data/climate/test.parquet', 
+        #                climate_file=climate_file,
+        #                years=(1983,1984))
 
     # Test scaled
     if False:
@@ -396,7 +401,7 @@ if __name__ == '__main__':
             cut_sky=False, scale_file=scale_file, pctile=pctile)
 
     # 10 percentile
-    if True:
+    if False:
         pctile = 10.
 
         '''
