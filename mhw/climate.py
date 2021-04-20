@@ -3,6 +3,7 @@
 
 import os
 import glob
+from IPython.core.magic_arguments import MagicHelpFormatter
 from pkg_resources import resource_filename
 
 import numpy as np
@@ -38,21 +39,24 @@ def noaa_seas_thresh(climate_db_file,
         output filename.  Should have extension .nc
     noaa_path : str, optional
         Path to NOAA OI SST files
-    climatologyPeriod
+        Defults to os.getenv("NOAA_OI")
+    climatologyPeriod : tuple, optional
+        Range of years defining the climatology; inclusive
     cut_sky : bool, optional
-    data_in : tuple, optinal
-        lat_coord, lon_coord, t, all_sst 
+        Used for debugging
+    data_in : tuple, optional
+        Loaded SST data.
+        lat_coord, lon_coord, t, all_sst
     pctile : float, optional
         Percentile for T threshold
     min_frac : float
         Minimum fraction required for analysis
     scale_file : str, optional
-    n_calc
-    debug
-
-    Returns
-    -------
-
+        Used to remove the overall trend in SST warming
+    n_calc : int, optional
+        Used for debugging
+    debug : bool, optional
+        Turn on debugging
     """
     # Path
     if noaa_path is None:
@@ -206,7 +210,7 @@ def build_time_dict(t):
     Parameters
     ----------
     t : np.ndarray
-        ordinal times
+        Array or ordinal values of time
 
     Returns
     -------
@@ -246,26 +250,34 @@ def build_time_dict(t):
 
     return times
 
-def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True):
+def noaa_median_sst(outfile, climate_file=None, 
+                    years=(1983, 2019), check=True):
     """
+    Calculate the global ocean's SST evolution across
+    the time period.
+    
+    Filter with a savgol and write to disk
 
     Parameters
     ----------
-    outfile
-    climate_file
-    years
-    check
-
-    Returns
-    -------
+    outfile : str
+        Output file of the goga
+    climate_file : str, optional
+        Climatology file to be analyzed
+        Default is NOAA_OI_climate_1983-2019.nc
+    years : tuple, optional
+        Years to analyze
+    check : bool, optional
+        Debug?
 
     """
-    feb29 = 60
+    feb29 = 60  
     # Load
     if climate_file is None:
-        climate_file = os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019.nc')
-    seasonalT = iris.load(climate_file, 'seasonalT')[0]
-    sT_data = seasonalT.data[:]
+        climate_file = os.path.join(os.getenv('NOAA_OI'), 
+                                    'NOAA_OI_climate_1983-2019.nc')
+    ds = xarray.open_dataset(climate_file)
+    sT_data = ds.seasonalT.values
 
     # Run it
     sv_yr, sv_dy, sv_medSST, sv_medSSTa = [], [], [], []
@@ -273,9 +285,9 @@ def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True
         print('year={}'.format(year))
         # Load
         noaa_file = os.path.join(os.getenv('NOAA_OI'), 'sst.day.mean.{}.nc'.format(year))
-        sst_cube = iris.load(noaa_file, 'sst')[0]
+        sst_ds = xarray.open_dataset(noaa_file)
+        SST = sst_ds.sst.to_masked_array()
         # Loop on days
-        SST = sst_cube.data[:]
         for day in range(SST.shape[0]):
             # print('day={}'.format(day))
             SSTd = SST[day, :, :]
@@ -322,10 +334,11 @@ def noaa_median_sst(outfile, climate_file=None, years = (1983, 2019), check=True
         ax.set_xlabel('Year')
         #
         plt.show()
-        embed(header='312 of climate')
+        embed(header='334 of climate')
 
     # Save pandas
-    pd_tbl.to_hdf(outfile, 'median_climate', mode='w')
+    pd_tbl.to_parquet(outfile)#, 'median_climate', mode='w')
+    #pd_tbl.to_hdf(outfile, 'median_climate', mode='w')
     print("Wrote: {}".format(outfile))
 
 # Command line execution
@@ -351,6 +364,12 @@ if __name__ == '__main__':
     # Median SSTa (savgol)
     if False:
         noaa_median_sst('data/climate/noaa_median_climate_1983_2019.hdf', years=(1983,2019))
+        # TEST
+        #climate_file = os.path.join(os.getenv('NOAA_OI'), 
+        #                            'NOAA_OI_climate_1983-2012.nc')
+        #noaa_median_sst('data/climate/test.parquet', 
+        #                climate_file=climate_file,
+        #                years=(1983,1984))
 
     # Test scaled
     if False:
