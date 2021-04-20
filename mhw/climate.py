@@ -24,7 +24,8 @@ from IPython import embed
 def noaa_seas_thresh(climate_db_file,
                      noaa_path=None,
                      climatologyPeriod=(1983, 2012),
-                     cut_sky=True, all_sst=None,
+                     cut_sky=True, 
+                     data_in=None,
                      scale_file=None,
                      pctile=90.,
                      min_frac=0.9, n_calc=None, debug=False):
@@ -38,8 +39,9 @@ def noaa_seas_thresh(climate_db_file,
     noaa_path : str, optional
         Path to NOAA OI SST files
     climatologyPeriod
-    cut_sky
-    all_sst
+    cut_sky : bool, optional
+    data_in : tuple, optinal
+        lat_coord, lon_coord, t, all_sst 
     pctile : float, optional
         Percentile for T threshold
     min_frac : float
@@ -57,14 +59,14 @@ def noaa_seas_thresh(climate_db_file,
         noaa_path = os.getenv("NOAA_OI")
 
     # Grab the list of SST V2 files
-    all_sst_files = glob.glob(os.path.join(noaa_path, 'sst*nc'))
+    all_sst_files = glob.glob(os.path.join(noaa_path, 'sst.day*nc'))
     all_sst_files.sort()
     # Cut on years
     if '1981' not in all_sst_files[0]:
         raise ValueError("Years not in sync!!")
 
     # Load the Cubes into memory
-    if all_sst is None:
+    if data_in is None:
         istart = climatologyPeriod[0] - 1981
         iend = climatologyPeriod[1] - 1981 + 1
         all_sst_files = all_sst_files[istart:iend]
@@ -72,10 +74,7 @@ def noaa_seas_thresh(climate_db_file,
         print("Loading up the files. Be patient...")
         lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(all_sst_files)
     else:
-        # Kludge
-        import pdb; pdb.set_trace()
-        ds = xarray.load_dataset(all_sst_files[0])
-        lat_coord, lon_coord = ds.lat, ds.lon
+        lat_coord, lon_coord, t, all_sst = data_in
 
     # Time
     time_dict = build_time_dict(t)
@@ -177,39 +176,28 @@ def noaa_seas_thresh(climate_db_file,
         out_seas[:, ilat, jlon] = seas_climYear
         out_thresh[:, ilat, jlon] = thresh_climYear
 
-        # Count
-
         # Cubes
         if (counter % 100000 == 0) or (counter == n_calc):
             print('count={} of {}.'.format(counter, n_calc))
             print("Saving...")
-            time_coord = xarray.IndexVariable('doy', np.arange(366, dtype=int) + 1)
-            da_seasonal = xarray.DataArray(out_seas, coords=[time_coord, lat_coord, lon_coord])
-            da_thresh = xarray.DataArray(out_thresh, coords=[time_coord, lat_coord, lon_coord])
-            #time_coord = iris.coords.DimCoord(np.arange(lenClimYear), units='day', var_name='day')
-            #cube_seas = iris.cube.Cube(out_seas, units='degC', var_name='seasonalT',
-            #                           dim_coords_and_dims=[(time_coord, 0),
-            #                                                (lat_coord, 1),
-            #                                                (lon_coord, 2)])
-            #cube_thresh = iris.cube.Cube(out_thresh, units='degC', var_name='threshT',
-            #                             dim_coords_and_dims=[(time_coord, 0),
-            #                                                  (lat_coord, 1),
-            #                                                  (lon_coord, 2)])
-            #cubes.append(cube_seas)
-            #cubes.append(cube_thresh)
-            ## Write
-            #iris.save(cubes, climate_db_file, zlib=True)
-            # Data set
-            climate_ds = xarray.Dataset({"seasonalT": da_seasonal,
-                                         "threshT": da_thresh})
-            # Write
-            climate_ds.to_netcdf(climate_db_file)#, encoding=encoding)
+            write_me(out_seas, out_thresh, lat_coord, lon_coord, climate_db_file)
 
-            print("Wrote: {}".format(climate_db_file))
-
+    # Final write
+    write_me(out_seas, out_thresh, lat_coord, lon_coord, climate_db_file)
     print("All done!!")
 
+def write_me(out_seas, out_thresh, lat_coord, lon_coord, climate_db_file):
+    """ Simple method for I/O """
+    time_coord = xarray.IndexVariable('doy', np.arange(366, dtype=int) + 1)
+    da_seasonal = xarray.DataArray(out_seas, coords=[time_coord, lat_coord, lon_coord])
+    da_thresh = xarray.DataArray(out_thresh, coords=[time_coord, lat_coord, lon_coord])
+    # Data set
+    climate_ds = xarray.Dataset({"seasonalT": da_seasonal,
+                                    "threshT": da_thresh})
+    # Write
+    climate_ds.to_netcdf(climate_db_file)#, encoding=encoding)
 
+    print("Wrote: {}".format(climate_db_file))
 
 def build_time_dict(t):
     """
@@ -217,7 +205,8 @@ def build_time_dict(t):
 
     Parameters
     ----------
-    t
+    t : np.ndarray
+        ordinal times
 
     Returns
     -------
@@ -396,7 +385,7 @@ if __name__ == '__main__':
             cut_sky=False, scale_file=scale_file, pctile=pctile)
 
     # 10 percentile
-    if True:
+    if False:
         pctile = 10.
 
         '''
@@ -413,3 +402,17 @@ if __name__ == '__main__':
             '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019_10.nc',
             climatologyPeriod=(1983, 2019),
             cut_sky=False, scale_file=scale_file, pctile=pctile)
+
+    # Interpolated 2.5deg
+    if True:
+        # Load up
+        noaa_path = os.getenv("NOAA_OI")
+        ds = xarray.open_dataset(os.path.join(noaa_path, 'sst_interp_2.5deg.nc'))
+        #datetimes = ds.time.values.astype('datetime64[s]').tolist()
+        #t = np.array([datetime.toordinal() for datetime in datetimes])
+        t = ds.time.data.astype(int)
+        data_in = ds.lat, ds.lon, t, [ds.int_sst.astype('float32').to_masked_array()]
+        noaa_seas_thresh(
+            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_2.5deg_1983-2019.nc',
+            climatologyPeriod=(1983, 2019),
+            cut_sky=False, data_in=data_in)
