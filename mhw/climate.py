@@ -427,8 +427,6 @@ if __name__ == '__main__':
         # Load up
         noaa_path = os.getenv("NOAA_OI")
         ds = xarray.open_dataset(os.path.join(noaa_path, 'sst_interp_2.5deg.nc'))
-        #datetimes = ds.time.values.astype('datetime64[s]').tolist()
-        #t = np.array([datetime.toordinal() for datetime in datetimes])
         t = ds.time.data.astype(int)
         data_in = ds.lat, ds.lon, t, [ds.int_sst.astype('float32').to_masked_array()]
         noaa_seas_thresh(

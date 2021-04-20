@@ -16,7 +16,7 @@ from mhw import utils as mhw_utils
 from IPython import embed
 
 def main(dbfile, years, noaa_path=None, climate_cube_file=None,
-         cut_sky=False, all_sst=None, min_frac=0.9, scale_file=None,
+         cut_sky=False, data_in=None, min_frac=0.9, scale_file=None,
          n_calc=None, append=False, seas_climYear=None, thresh_climYear=None,
          nsub=9999, coldSpells=False):
     """
@@ -34,7 +34,9 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         File including the T threshold from climatology
     cut_sky : bool, optional
         Use a subset of the sky for testing
-    all_sst
+    data_in : tuple, optional
+        Loaded SST data.
+        lat_coord, lon_coord, t, all_sst
     min_frac
     n_calc
     append
@@ -70,14 +72,14 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         _ = thresh_climYear.data[:]
 
     # Grab the list of SST V2 files
-    all_sst_files = glob.glob(os.path.join(noaa_path, 'sst*nc'))
+    all_sst_files = glob.glob(os.path.join(noaa_path, 'sst.day*nc'))
     all_sst_files.sort()
     # Cut on years
     if '1981' not in all_sst_files[0]:
         raise ValueError("Years not in sync!!")
 
     # Load the Cubes into memory
-    if all_sst is None:
+    if data_in is None:
         istart = years[0] - 1981
         iend = years[1] - 1981 + 1
         all_sst_files = all_sst_files[istart:iend]
@@ -85,11 +87,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         print("Loading up the files. Be patient...")
         lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(all_sst_files)
     else:
-        embed(header='Should load these from load_noaa_sst not build these')
-        # Coords
-        lat_coord, lon_coord = seas_climYear.lat.data, seas_climYear.lon.data
-        # Time
-        t = mhw_utils.grab_t(all_sst)
+        lat_coord, lon_coord, t, all_sst = data_in
 
     # Day of year
     doy = mhw_utils.calc_doy(t)
@@ -212,6 +210,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
 
         # Save to db
         if (sub_count == nsub-1) or (counter == n_calc):
+            print('Count: {}, {}'.format(counter, n_calc))
             # Write
             final_tbl = None
             for kk, iilat, jjlon in zip(range(sub_count), ilats, jlons):
@@ -284,8 +283,8 @@ if __name__ == '__main__':
              nsub=1000,
              climate_cube_file=os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))
 
-        # Full runs
-    if True:
+    # Full runs
+    if False:
         # Default run to match Oliver (+ a few extra years)
         '''
         main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
@@ -316,3 +315,19 @@ if __name__ == '__main__':
         main('/home/xavier/Projects/Oceanography/MHW/db/mcs_allsky_defaults.db',
              (1983,2019), cut_sky=False, append=False, coldSpells=True,
              climate_cube_file = os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))
+
+    # Interpolated (2.5deg) 
+    if True:
+        noaa_path = os.getenv("NOAA_OI")
+        ds = xarray.open_dataset(os.path.join(noaa_path, 'sst_interp_2.5deg.nc'))
+        t = ds.time.data.astype(int)
+        data_in = ds.lat, ds.lon, t, [ds.int_sst.astype('float32').to_masked_array()]
+
+        # Default run to match Oliver (+ a few extra years)
+
+        # 1983-2019 climatology
+        climate_cube_file = os.path.join(noaa_path, 'NOAA_OI_climate_2.5deg_1983-2019.nc')
+        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_defaults.db',
+                            (1982,2019), cut_sky=False, append=False,
+                            climate_cube_file=climate_cube_file,
+                            data_in=data_in)
