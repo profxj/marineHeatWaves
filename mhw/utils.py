@@ -1,5 +1,6 @@
 """ Utilities for marine heat waves"""
 
+from IPython.terminal.embed import embed
 import numpy as np
 import scipy.ndimage as ndimage
 from datetime import date
@@ -104,11 +105,13 @@ def nonans(array):
     return array[~np.isnan(array)]
 
 
-def load_noaa_sst(sst_files):
+def load_noaa_sst(sst_files, interpolated=False):
     """
 
     Args:
         sst_files (list):
+        interpolated (bool, optional):
+            Interpolated SST files
 
     Returns:
         tuple:  lat_coord, lon_coord, np.array of toordials, list of masked SST
@@ -119,11 +122,17 @@ def load_noaa_sst(sst_files):
     for ifile in sst_files:
         print(ifile)  # For progress
         ds = xarray.open_dataset(ifile)
-        datetimes = ds.time.values.astype('datetime64[s]').tolist()
-        t = [datetime.toordinal() for datetime in datetimes]
+        # Allow for interpolated files
+        if interpolated:
+            t = ds.time.data.astype(int).tolist()
+            sst = ds.interpolated_sst.astype('float32').to_masked_array()
+        else:
+            datetimes = ds.time.values.astype('datetime64[s]').tolist()
+            t = [datetime.toordinal() for datetime in datetimes]
+            sst = sst.to_masked_array()
+        # Append 
+        all_sst.append(sst)
         allts += t
-        # Append as a masked array
-        all_sst.append(ds.sst.to_masked_array())
     #
     return ds.lat, ds.lon, np.array(allts), all_sst
 

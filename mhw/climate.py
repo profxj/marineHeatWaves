@@ -29,6 +29,7 @@ def noaa_seas_thresh(climate_db_file,
                      data_in=None,
                      scale_file=None,
                      pctile=90.,
+                     interpolated=False,
                      min_frac=0.9, n_calc=None, debug=False):
     """
     Build climate model for NOAA OI data
@@ -57,26 +58,34 @@ def noaa_seas_thresh(climate_db_file,
         Used for debugging
     debug : bool, optional
         Turn on debugging
+    interpolated : bool, optional
+        Files are interpolated
     """
     # Path
     if noaa_path is None:
-        noaa_path = os.getenv("NOAA_OI")
+        if interpolated:
+            noaa_path = os.path.join(os.getenv("NOAA_OI"), 'Interpolated')
+            sst_root='interpolated_sst*'
+        else:
+            noaa_path = os.getenv("NOAA_OI")
+            sst_root = 'sst.day*nc'
 
     # Grab the list of SST V2 files
-    all_sst_files = glob.glob(os.path.join(noaa_path, 'sst.day*nc'))
+    all_sst_files = glob.glob(os.path.join(noaa_path, sst_root))
     all_sst_files.sort()
-    # Cut on years
-    if '1981' not in all_sst_files[0]:
-        raise ValueError("Years not in sync!!")
 
     # Load the Cubes into memory
     if data_in is None:
-        istart = climatologyPeriod[0] - 1981
-        iend = climatologyPeriod[1] - 1981 + 1
-        all_sst_files = all_sst_files[istart:iend]
+        for ii, ifile in enumerate(all_sst_files):
+            if str(climatologyPeriod[0]) in ifile:
+                istart = ii
+            if str(climatologyPeriod[1]) in ifile:
+                iend = ii
+        all_sst_files = all_sst_files[istart:iend+1]
 
         print("Loading up the files. Be patient...")
-        lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(all_sst_files)
+        lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(
+            all_sst_files, interpolated=interpolated)
     else:
         lat_coord, lon_coord, t, all_sst = data_in
 
@@ -425,11 +434,11 @@ if __name__ == '__main__':
     # Interpolated 2.5deg
     if True:
         # Load up
-        noaa_path = os.getenv("NOAA_OI")
-        ds = xarray.open_dataset(os.path.join(noaa_path, 'sst_interp_2.5deg.nc'))
-        t = ds.time.data.astype(int)
-        data_in = ds.lat, ds.lon, t, [ds.int_sst.astype('float32').to_masked_array()]
+        #ds = xarray.open_dataset(os.path.join(noaa_path, 'sst_interp_2.5deg.nc'))
+        #t = ds.time.data.astype(int)
+        #data_in = ds.lat, ds.lon, t, [ds.int_sst.astype('float32').to_masked_array()]
         noaa_seas_thresh(
             '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_2.5deg_1983-2019.nc',
+            interpolated=True,
             climatologyPeriod=(1983, 2019),
-            cut_sky=False, data_in=data_in)
+            cut_sky=False)#, data_in=data_in)
