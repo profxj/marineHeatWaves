@@ -28,6 +28,7 @@ def noaa_seas_thresh(climate_db_file,
                      cut_sky=True, 
                      data_in=None,
                      scale_file=None,
+                     smoothPercentile = True,
                      pctile=90.,
                      interpolated=False,
                      min_frac=0.9, n_calc=None, debug=False):
@@ -60,6 +61,8 @@ def noaa_seas_thresh(climate_db_file,
         Turn on debugging
     interpolated : bool, optional
         Files are interpolated
+    smoothPercentile : bool, optional
+        If True, smooth the measure in a 31 day box.  Default=True
     """
     # Path
     if noaa_path is None:
@@ -125,9 +128,6 @@ def noaa_seas_thresh(climate_db_file,
     out_thresh = np.zeros((lenClimYear, lat_coord.shape[0], lon_coord.shape[0]), dtype='float32')
 
     counter = 0
-    tot_events = 0
-
-    # Init climate items
 
     # Length of climatological year
     lenClimYear = 366
@@ -148,7 +148,6 @@ def noaa_seas_thresh(climate_db_file,
     nwHW = wHW_array.shape[1]
 
     # Smoothing
-    smoothPercentile = True
     smoothPercentileWidth = 31
 
     # Main loop
@@ -304,7 +303,6 @@ def noaa_median_sst(outfile, climate_file=None,
             sv_dy.append(day + 1)  # Jan 1 = 1
             # Stats
             sv_medSST.append(np.median(SSTd[~SSTd.mask]))
-            # import pdb; pdb.set_trace()
             # Deal with leap year
             offset = 0
             if ((year - 1984) % 4) != 0 and (day >= feb29):
@@ -365,9 +363,16 @@ if __name__ == '__main__':
                          cut_sky=False)
 
     # Full Climate 1983-2019; not scaled
-    if False:
+    if True:
         noaa_seas_thresh('/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_1983-2019.nc',
                          climatologyPeriod=(1983, 2019),
+                         cut_sky=False)
+
+    # Full Climate 1983-2019; not smoothed
+    if False:
+        noaa_seas_thresh('/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_1983-2019_nosmooth.nc',
+                         climatologyPeriod=(1983, 2019),
+                         smoothPercentile=False,
                          cut_sky=False)
 
     # Median SSTa (savgol)
@@ -432,13 +437,18 @@ if __name__ == '__main__':
             cut_sky=False, scale_file=scale_file, pctile=pctile)
 
     # Interpolated 2.5deg
-    if True:
-        # Load up
-        #ds = xarray.open_dataset(os.path.join(noaa_path, 'sst_interp_2.5deg.nc'))
-        #t = ds.time.data.astype(int)
-        #data_in = ds.lat, ds.lon, t, [ds.int_sst.astype('float32').to_masked_array()]
+    if False:
+        # 2012
         noaa_seas_thresh(
-            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_2.5deg_1983-2019.nc',
+            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/Interpolated/NOAA_OI_climate_2.5deg_1983-2012.nc',
             interpolated=True,
-            climatologyPeriod=(1983, 2019),
+            climatologyPeriod=(1983, 2012),
             cut_sky=False)#, data_in=data_in)
+
+        # 2019
+        if False:
+            noaa_seas_thresh(
+                '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_2.5deg_1983-2019.nc',
+                interpolated=True,
+                climatologyPeriod=(1983, 2019),
+                cut_sky=False)#, data_in=data_in)

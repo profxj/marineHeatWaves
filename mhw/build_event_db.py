@@ -328,15 +328,18 @@ if __name__ == '__main__':
     # Interpolated (2.5deg) 
     if True:
         noaa_path = os.getenv("NOAA_OI")
-        #ds = xarray.open_dataset(os.path.join(noaa_path, 'sst_interp_2.5deg.nc'))
-        #t = ds.time.data.astype(int)
-        #data_in = ds.lat, ds.lon, t, [ds.int_sst.astype('float32').to_masked_array()]
 
         # Default run to match Oliver (+ a few extra years)
+        climate_cube_file = os.path.join(noaa_path, 'Interpolated', 'NOAA_OI_climate_2.5deg_1983-2012.nc')
+        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2012.db',
+                            (1982,2019), cut_sky=False, append=False,
+                            interpolated=True,
+                            climate_cube_file=climate_cube_file)
 
         # 1983-2019 climatology
-        climate_cube_file = os.path.join(noaa_path, 'NOAA_OI_climate_2.5deg_1983-2019.nc')
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2019.db',
+        if False:
+            climate_cube_file = os.path.join(noaa_path, 'NOAA_OI_climate_2.5deg_1983-2019.nc')
+            main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2019.db',
                             (1982,2019), cut_sky=False, append=False,
                             interpolated=True,
                             climate_cube_file=climate_cube_file)

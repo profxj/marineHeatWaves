@@ -129,7 +129,7 @@ def load_noaa_sst(sst_files, interpolated=False):
         else:
             datetimes = ds.time.values.astype('datetime64[s]').tolist()
             t = [datetime.toordinal() for datetime in datetimes]
-            sst = sst.to_masked_array()
+            sst = ds.sst.to_masked_array()
         # Append 
         all_sst.append(sst)
         allts += t
