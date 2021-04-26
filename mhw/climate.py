@@ -3,6 +3,7 @@
 
 import os
 import glob
+from typing import IO
 from IPython.core.magic_arguments import MagicHelpFormatter
 from pkg_resources import resource_filename
 
@@ -99,7 +100,12 @@ def noaa_seas_thresh(climate_db_file,
     scls = np.zeros_like(t).astype(float)
     if scale_file is not None:
         # Use scales
-        scale_tbl = pandas.read_hdf(scale_file, 'median_climate')
+        if scale_file[-3:] == 'hdf':
+            scale_tbl = pandas.read_hdf(scale_file, 'median_climate')
+        elif scale_file[-7:] == 'parquet':
+            scale_tbl = pandas.read_parquet(scale_file)
+        else:
+            raise IOError("Not ready for this type of scale_file: {}".format(scale_file))
         for kk, it in enumerate(t):
             mtch = np.where(scale_tbl.index.to_pydatetime() == datetime.datetime.fromordinal(it))[0][0]
             scls[kk] = scale_tbl.medSSTa_savgol[mtch]
@@ -258,8 +264,8 @@ def build_time_dict(t):
 
     return times
 
-def noaa_median_sst(outfile, climate_file=None, 
-                    years=(1983, 2019), check=True):
+def detrend_sst(outfile, climate_file=None, stat='median', 
+                    years=(1983, 2019), check=False):
     """
     Calculate the global ocean's SST evolution across
     the time period.
@@ -273,6 +279,8 @@ def noaa_median_sst(outfile, climate_file=None,
     climate_file : str, optional
         Climatology file to be analyzed
         Default is NOAA_OI_climate_1983-2019.nc
+    stat : str, optional
+        Stat applied to the global SSTa measures
     years : tuple, optional
         Years to analyze
     check : bool, optional
@@ -309,7 +317,14 @@ def noaa_median_sst(outfile, climate_file=None,
                 offset = 1
             # SSTa
             SSTa = SSTd - sT_data[day + offset, :, :]
-            sv_medSSTa.append(np.median(SSTa[~SSTd.mask]))
+            if stat == 'median':
+                DSST = np.median(SSTa[~SSTd.mask])
+            elif stat == 'mean':
+                DSST = np.mean(SSTa[~SSTd.mask])
+            else:
+                raise IOError("Bad stat: {}".format(stat))
+            # Save
+            sv_medSSTa.append(DSST)
 
     # Dates
     tdates = [datetime.datetime(year, 1, 1) + datetime.timedelta(days=day - 1) for year, day in zip(sv_yr, sv_dy)]
@@ -322,6 +337,12 @@ def noaa_median_sst(outfile, climate_file=None,
     # Savgol
     SSTa_filt = signal.savgol_filter(sv_medSSTa, 365, 3)
     pd_tbl['medSSTa_savgol'] = SSTa_filt
+
+    # Linear fit
+    fit = np.polyfit(np.arange(len(sv_medSSTa)), 
+                     np.array(sv_medSSTa), 1)
+    pd_tbl['p0'] = fit[0]
+    pd_tbl['p1'] = fit[1]
 
     # Check?
     if check:
@@ -341,43 +362,66 @@ def noaa_median_sst(outfile, climate_file=None,
         ax.set_xlabel('Year')
         #
         plt.show()
-        embed(header='334 of climate')
 
     # Save pandas
     pd_tbl.to_parquet(outfile)#, 'median_climate', mode='w')
     #pd_tbl.to_hdf(outfile, 'median_climate', mode='w')
     print("Wrote: {}".format(outfile))
 
-# Command line execution
-if __name__ == '__main__':
+
+def main(flg_main):
+    if flg_main == 'all':
+        flg_main = np.sum(np.array([2 ** ii for ii in range(25)]))
+    else:
+        flg_main = int(flg_main)
+
+
+    noaa_path = os.getenv('NOAA_OI')
 
     # Test
-    if False:
+    if flg_main & (2 ** 0):
         noaa_seas_thresh('test.nc',
                          climatologyPeriod=(1983, 1988),
                          cut_sky=False)
-    # Traditional Climate
-    if False:
-        noaa_seas_thresh('/home/xavier/Projects/Oceanography/MHWs/db/NOAA_OI_climate_1983-2012.nc',
+
+    # Traditional Hobday Climate
+    if flg_main & (2 ** 1):
+        noaa_seas_thresh(os.path.join(noaa_path, 'NOAA_OI_climate_1983-2012.nc'),
                          climatologyPeriod=(1983, 2012),
                          cut_sky=False)
 
-    # Full Climate 1983-2019; not scaled
-    if True:
-        noaa_seas_thresh('/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_1983-2019.nc',
+    # Full Climate 1983-2019
+    if flg_main & (2 ** 2):
+        noaa_seas_thresh(os.path.join(noaa_path, 'NOAA_OI_climate_1983-2019.nc'),
                          climatologyPeriod=(1983, 2019),
                          cut_sky=False)
 
     # Full Climate 1983-2019; not smoothed
-    if False:
-        noaa_seas_thresh('/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_1983-2019_nosmooth.nc',
+    if flg_main & (2 ** 3):
+        print("Running 2019, not smoothed")
+        noaa_seas_thresh(os.path.join(noaa_path, 'NOAA_OI_climate_1983-2019_nosmooth.nc'),
                          climatologyPeriod=(1983, 2019),
                          smoothPercentile=False,
                          cut_sky=False)
 
-    # Median SSTa (savgol)
-    if False:
-        noaa_median_sst('data/climate/noaa_median_climate_1983_2019.hdf', years=(1983,2019))
+    # De-trending
+    if flg_main & (2 ** 4):
+        print("Running 2019, de-trended")
+        # 2012
+        detrend_sst(os.path.join(noaa_path, 'noaa_detrend_median_1983_2012.parquet'), 
+                    years=(1983,2012), stat='median',
+                    climate_file=os.path.join(os.getenv('NOAA_OI'), 
+                                    'NOAA_OI_climate_1983-2012.nc'))
+        detrend_sst(os.path.join(noaa_path, 'noaa_detrend_mean_1983_2012.parquet'), 
+                    years=(1983,2012), stat='mean',
+                    climate_file=os.path.join(os.getenv('NOAA_OI'), 
+                                    'NOAA_OI_climate_1983-2012.nc'))
+
+        # 2019
+        detrend_sst(os.path.join(noaa_path, 'noaa_detrend_median_1983_2019.parquet'), 
+                    stat='median', years=(1983,2019))
+        detrend_sst(os.path.join(noaa_path, 'noaa_detrend_mean_1983_2019.parquet'), 
+                    stat='mean', years=(1983,2019))
         # TEST
         #climate_file = os.path.join(os.getenv('NOAA_OI'), 
         #                            'NOAA_OI_climate_1983-2012.nc')
@@ -386,23 +430,31 @@ if __name__ == '__main__':
         #                years=(1983,1984))
 
     # Test scaled
-    if False:
+    if flg_main & (2 ** 5):
         scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
                                   'noaa_median_climate_1983_2012.hdf')
         noaa_seas_thresh('test_scaled.nc',
                          climatologyPeriod=(1983, 1985),
                          cut_sky=False, scale_file=scale_file)
-    # Full; scaled
-    if False:
-        scale_file = os.path.join(resource_filename('mhw', 'data'), 'climate',
-                                  'noaa_median_climate_1983_2019.hdf')
+
+    # Full; de-trend climatologies, 2019
+    if flg_main & (2 ** 6):
+        # Median
+        scale_file = os.path.join(noaa_path, 'noaa_detrend_median_1983_2019.parquet') 
         noaa_seas_thresh(
-            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
+            os.path.join(noaa_path, 'NOAA_OI_detrend_median_climate_1983-2019.nc'),
             climatologyPeriod=(1983, 2019),
             cut_sky=False, scale_file=scale_file)
+        # Mean
+        scale_file = os.path.join(noaa_path, 'noaa_detrend_mean_1983_2019.parquet')
+        noaa_seas_thresh(
+            os.path.join(noaa_path, 'NOAA_OI_detrend_mean_climate_1983-2019.nc'),
+            climatologyPeriod=(1983, 2019),
+            cut_sky=False, scale_file=scale_file)
+        # Linear
 
     # 95 percentile
-    if False:
+    if flg_main & (2 ** 7):
         pctile = 95.
         # Full Climate 1983-2019, 95th precentile; not scaled
         noaa_seas_thresh('/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_1983-2019_95.nc',
@@ -418,7 +470,7 @@ if __name__ == '__main__':
             cut_sky=False, scale_file=scale_file, pctile=pctile)
 
     # 10 percentile
-    if False:
+    if flg_main & (2 ** 8):
         pctile = 10.
 
         '''
@@ -437,7 +489,7 @@ if __name__ == '__main__':
             cut_sky=False, scale_file=scale_file, pctile=pctile)
 
     # Interpolated 2.5deg
-    if False:
+    if flg_main & (2 ** 9):
         # 2012
         noaa_seas_thresh(
             '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/Interpolated/NOAA_OI_climate_2.5deg_1983-2012.nc',
@@ -446,9 +498,25 @@ if __name__ == '__main__':
             cut_sky=False)#, data_in=data_in)
 
         # 2019
-        if False:
-            noaa_seas_thresh(
-                '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_2.5deg_1983-2019.nc',
-                interpolated=True,
-                climatologyPeriod=(1983, 2019),
-                cut_sky=False)#, data_in=data_in)
+        noaa_seas_thresh(
+            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_2.5deg_1983-2019.nc',
+            interpolated=True,
+            climatologyPeriod=(1983, 2019),
+            cut_sky=False)#, data_in=data_in)
+
+# Command line execution
+if __name__ == '__main__':
+    import sys
+
+    if len(sys.argv) == 1:
+        flg_main = 0
+        #flg_main += 2 ** 1  # Hobday
+        #flg_main += 2 ** 2  # 2019
+        #flg_main += 2 ** 3  # 2019, not smoothed
+        #flg_main += 2 ** 4  # Create De-trend files (2012, 2019, mean, median)
+        #flg_main += 2 ** 5  # Test
+        flg_main += 2 ** 6  # De-trend climatology, 2019 (mean, median)
+    else:
+        flg_main = sys.argv[1]
+
+    main(flg_main)

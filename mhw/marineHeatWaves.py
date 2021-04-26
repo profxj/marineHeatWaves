@@ -20,7 +20,7 @@ from IPython import embed
 
 def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data_count, data,
                            minDuration=5, joinAcrossGaps=True, maxGap=2,
-                           coldSpells=False, parallel=True):
+                           coldSpells=False, parallel=True, minDT=None):
     '''
     Applies the Hobday et al. (2016) marine heat wave definition to an input time
     series of temp ('temp') along with a time vector ('t'). Outputs properties of
@@ -37,6 +37,7 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
       temp    Temperature vector [1D numpy array of length T]
       seas_climYear    Seasonal SST values
       thresh_climYear  Threshold (90%) SST values
+      minDT   Minimum absolute T for a MHWE, optional
 
     Outputs:
 
@@ -178,6 +179,12 @@ def detect_with_input_climate(t, doy, temp, seas_climYear, thresh_climYear, data
     exceed_bool[exceed_bool > 0] = True
     # Fix issue where missing temp vaues (nan) are counted as True
     exceed_bool[np.isnan(exceed_bool)] = False
+
+    # Min DT?
+    if minDT is not None:
+        not_exceed_DT = temp-seas < minDT
+        exceed_bool[not_exceed_DT] = False
+
     # Find contiguous regions of exceed_bool = True
     events, n_events = ndimage.label(exceed_bool)
 

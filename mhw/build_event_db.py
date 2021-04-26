@@ -15,11 +15,13 @@ from mhw import utils as mhw_utils
 
 from IPython import embed
 
-def main(dbfile, years, noaa_path=None, climate_cube_file=None,
+MHW_path = os.getenv('MHW')
+
+def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
          cut_sky=False, data_in=None, min_frac=0.9, scale_file=None,
          n_calc=None, append=False, seas_climYear=None, 
-         thresh_climYear=None,
-         nsub=9999, coldSpells=False, interpolated=False):
+         thresh_climYear=None, minDT=None,
+         nsub=49999, coldSpells=False, interpolated=False):
     """
     Generate an MHW Event database
 
@@ -53,6 +55,8 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
         Note: One should also be using a varying climate_cube_file
     coldSpells : bool, optional
         If True, search for Cold spells, not Heat Wave events
+    minDT : float, optional
+        If set, a MHWE must exceed this absoulte DT
 
     Returns
     -------
@@ -65,6 +69,7 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
             sst_root='interpolated_sst*'
         else:
             noaa_path = os.getenv("NOAA_OI")
+            sst_root='sst.day.*nc'
 
     # Load climate
     if climate_cube_file is None:
@@ -105,7 +110,12 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
     scls = np.zeros_like(t).astype(float)
     if scale_file is not None:
         # Use scales
-        scale_tbl = pandas.read_hdf(scale_file, 'median_climate')
+        if scale_file[-3:] == 'hdf':
+            scale_tbl = pandas.read_hdf(scale_file, 'median_climate')
+        elif scale_file[-7:] == 'parquet':
+            scale_tbl = pandas.read_parquet(scale_file)
+        else:
+            raise IOError("Not ready for this type of scale_file: {}".format(scale_file))
         for kk, it in enumerate(t):
             mtch = np.where(scale_tbl.index.to_pydatetime() == datetime.datetime.fromordinal(it))[0][0]
             scls[kk] = scale_tbl.medSSTa_savgol[mtch]
@@ -213,7 +223,8 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
                                                       isign*SST.flatten(),
                                                       isign*seas_climYear.data[:, ilat, jlon].flatten(),
                                                       isign*thresh_climYear.data[:, ilat, jlon].flatten(),
-                                                      sub_count, data)
+                                                      sub_count, data,
+                                                      minDT=minDT)
         else:
             nmask += 1
 
@@ -272,11 +283,16 @@ def main(dbfile, years, noaa_path=None, climate_cube_file=None,
     print("See {}".format(dbfile))
 
 
-# Command line execution
-if __name__ == '__main__':
+def main(flg_main):
+    if flg_main == 'all':
+        flg_main = np.sum(np.array([2 ** ii for ii in range(25)]))
+    else:
+        flg_main = int(flg_main)
+        
+    noaa_path = os.getenv('NOAA_OI')
 
     # Test
-    if False:
+    if flg_main & (2 ** 0):
         # Scaled seasonalT, thresholdT
         '''
         main('tst.db',
@@ -288,50 +304,79 @@ if __name__ == '__main__':
         '''
 
         # T10 (Cold waves!)
-        main('tst.db', (1983,1985), cut_sky=True, append=False, coldSpells=True,
+        build_mhw_events('tst.db', (1983,1985), cut_sky=True, append=False, coldSpells=True,
              nsub=1000,
              climate_cube_file=os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))
 
     # Full runs
-    if False:
-        # Default run to match Oliver (+ a few extra years)
-        '''
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhws_allsky_defaults.db',
-                            (1982,2019), cut_sky=False, append=False)
-        '''
 
-        # Scaled seasonalT, thresholdT
-        '''
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary.db',
-             (1983,2019),
-             climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019.nc',
-             scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
-                                     'noaa_median_climate_1983_2019.hdf'),
-             cut_sky=False, append=False)
-        '''
+    # Default run to match Oliver (+ a few extra years)
+    if flg_main & (2 ** 1):
+        build_mhw_events(os.path.join(MHW_path, 'db', 
+                                      'mhw_events_allsky_defaults.db'), 
+             (1982,2019), cut_sky=False, append=False)
 
-        # T95 + scaled
-        '''
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_allsky_vary_95.db',
+    # 2019 climate
+    if flg_main & (2 ** 2):
+        build_mhw_events(os.path.join(MHW_path, 'db', 
+                                      'mhw_events_allsky_2019.db'), 
+             (1982,2019), cut_sky=False, append=False,
+             climate_cube_file=os.path.join(
+                 os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019.nc'))
+
+    # 2019, Scaled seasonalT, thresholdT (median)
+    if flg_main & (2 ** 3):
+        print("Running 2019, de-trended median")
+        build_mhw_events(os.path.join(MHW_path, 'db', 
+                                      'mhw_events_allsky_2019_median.db'),
              (1983,2019),
-             climate_cube_file='/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_varyclimate_1983-2019_95.nc',
-             scale_file=os.path.join(resource_filename('mhw', 'data'), 'climate',
-                                     'noaa_median_climate_1983_2019.hdf'),
+             climate_cube_file=os.path.join(
+                 os.getenv('NOAA_OI'), 'NOAA_OI_detrend_median_climate_1983-2019.nc'),
+             scale_file=os.path.join(noaa_path, 
+                                     'noaa_detrend_median_1983_2019.parquet'),
              cut_sky=False, append=False)
-        '''
+
+    # 2019, Scaled seasonalT, thresholdT (mean)
+    if flg_main & (2 ** 4):
+        print("Running 2019, de-trended mean")
+        build_mhw_events(os.path.join(MHW_path, 'db', 
+                                      'mhw_events_allsky_2019_mean.db'),
+             (1983,2019),
+             climate_cube_file=os.path.join(
+                 os.getenv('NOAA_OI'), 'NOAA_OI_detrend_mean_climate_1983-2019.nc'),
+             scale_file=os.path.join(noaa_path, 
+                                     'noaa_detrend_mean_1983_2019.parquet'),
+             cut_sky=False, append=False)
 
         # T10 (Cold waves!)
-        main('/home/xavier/Projects/Oceanography/MHW/db/mcs_allsky_defaults.db',
-             (1983,2019), cut_sky=False, append=False, coldSpells=True,
-             climate_cube_file = os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))
+        #main('/home/xavier/Projects/Oceanography/MHW/db/mcs_allsky_defaults.db',
+        #     (1983,2019), cut_sky=False, append=False, coldSpells=True,
+        #     climate_cube_file = os.path.join(os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_10.nc'))
+
+    # Not smoothed
+    if flg_main & (2 ** 5):
+        print("Running 2019, not smoothed")
+        build_mhw_events(os.path.join(MHW_path, 'db', 
+                                      'mhw_events_allsky_2019_nosmooth.db'), 
+             (1982,2019), cut_sky=False, append=False,
+             climate_cube_file=os.path.join(
+                 os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_nosmooth.nc'))
+
+    # DT > 0.5K
+    if flg_main & (2 ** 6):
+        print("Running 2019 with DT>0.5K ")
+        build_mhw_events(os.path.join(MHW_path, 'db', 
+                                      'mhw_events_allsky_2019_DT0.5.db'), 
+             (1982,2019), cut_sky=False, append=False,
+             climate_cube_file=os.path.join(
+                 os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019.nc'),
+             minDT=0.5)
 
     # Interpolated (2.5deg) 
-    if True:
-        noaa_path = os.getenv("NOAA_OI")
-
+    if flg_main & (2 ** 10):
         # Default run to match Oliver (+ a few extra years)
         climate_cube_file = os.path.join(noaa_path, 'Interpolated', 'NOAA_OI_climate_2.5deg_1983-2012.nc')
-        main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2012.db',
+        build_mhw_events('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2012.db',
                             (1982,2019), cut_sky=False, append=False,
                             interpolated=True,
                             climate_cube_file=climate_cube_file)
@@ -339,7 +384,45 @@ if __name__ == '__main__':
         # 1983-2019 climatology
         if False:
             climate_cube_file = os.path.join(noaa_path, 'NOAA_OI_climate_2.5deg_1983-2019.nc')
-            main('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2019.db',
+            build_mhw_events('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2019.db',
                             (1982,2019), cut_sky=False, append=False,
                             interpolated=True,
                             climate_cube_file=climate_cube_file)
+                            
+    # Parquet files
+    if flg_main & (2 ** 50):
+        clobber = False
+        possible_files = ['mhw_events_allsky_defaults.db', 
+                          'mhw_events_allsky_2019.db']
+        for root in possible_files:
+            ifile = os.path.join(MHW_path, 'db', root)
+            pfile = ifile.replace('.db', '.parquet')
+            if os.path.isfile(pfile) and not clobber:
+                print("Not clobbering: {}".format(pfile))
+                continue
+            # Load
+            print("Loading the events from: {}".format(ifile))
+            engine = sqlalchemy.create_engine('sqlite:///'+ifile)
+            mhw_events = pandas.read_sql_table('MHW_Events', con=engine)
+            # Write to parquet
+            mhw_events.to_parquet(pfile)
+            print("Wrote: {}".format(pfile))
+
+
+# Command line execution
+if __name__ == '__main__':
+    import sys
+
+    if len(sys.argv) == 1:
+        flg_main = 0
+        #flg_main += 2 ** 1  # Hobday
+        #flg_main += 2 ** 2  # 2019
+        #flg_main += 2 ** 3  # De-trended 2019, median
+        #flg_main += 2 ** 4  # De-trended 2019, mean
+        #flg_main += 2 ** 5  # 2019, not smoothed
+        #flg_main += 2 ** 6  # 2019, DT > 0.5K
+        flg_main += 2 ** 50  # Parquet em
+    else:
+        flg_main = sys.argv[1]
+
+    main(flg_main)
