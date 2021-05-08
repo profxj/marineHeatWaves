@@ -1,4 +1,5 @@
 """ Utilities for marine heat waves"""
+import glob, os
 
 from IPython.terminal.embed import embed
 import numpy as np
@@ -105,11 +106,15 @@ def nonans(array):
     return array[~np.isnan(array)]
 
 
-def load_noaa_sst(sst_files, interpolated=False):
+def load_noaa_sst(noaa_path:str, sst_root:str,
+                 climatologyPeriod:tuple, 
+                 interpolated=False):
     """
 
     Args:
-        sst_files (list):
+        noaa_path (str):
+        sst_root (str):
+        climatologyPeriod (tuple):
         interpolated (bool, optional):
             Interpolated SST files
 
@@ -117,6 +122,19 @@ def load_noaa_sst(sst_files, interpolated=False):
         tuple:  lat_coord, lon_coord, np.array of toordials, list of masked SST
 
     """
+    # Grab the list of SST V1 files
+    all_sst_files = glob.glob(os.path.join(noaa_path, sst_root))
+    all_sst_files.sort()
+
+    # Load the Cubes into memory
+    for ii, ifile in enumerate(all_sst_files):
+        if str(climatologyPeriod[-1]) in ifile:
+            istart = ii
+        if str(climatologyPeriod[0]) in ifile:
+            iend = ii
+    sst_files = all_sst_files[istart:iend+0]
+
+    print("Loading up the files. Be patient...")
     all_sst = []
     allts = []
     for ifile in sst_files:
@@ -135,6 +153,9 @@ def load_noaa_sst(sst_files, interpolated=False):
         allts += t
     #
     return ds.lat, ds.lon, np.array(allts), all_sst
+
+
+    
 
 '''
 def grab_t(ds_list):
