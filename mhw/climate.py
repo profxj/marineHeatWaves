@@ -33,7 +33,7 @@ def noaa_seas_thresh(climate_db_file,
                      smoothPercentile = True,
                      pctile=90.,
                      interpolated=False,
-                     detrend_local=False,
+                     detrend_local=None,
                      min_frac=0.9, n_calc=None, debug=False):
     """
     Build climate model for NOAA OI data
@@ -66,8 +66,8 @@ def noaa_seas_thresh(climate_db_file,
         Files are interpolated
     smoothPercentile : bool, optional
         If True, smooth the measure in a 31 day box.  Default=True
-    detrend_local : bool, optional
-        If True, detrend the climatology at each grid cell with a linear trend
+    detrend_local : str, optional
+        If provided, load this up to detrend the SSTa values
     """
     # Path
     if noaa_path is None:
@@ -101,10 +101,20 @@ def noaa_seas_thresh(climate_db_file,
         for kk, it in enumerate(t):
             mtch = np.where(scale_tbl.index.to_pydatetime() == datetime.datetime.fromordinal(it))[0][0]
             scls[kk] = scale_tbl.medSSTa_savgol[mtch]
-
+    
+    # De-trend
+    if detrend_local: 
+        # Check
+        if scale_file is not None:
+            raise IOError("Don't mix scaling and de-trending!")
+        # Load up
+        ds_detrend = xarray.open_dataset(detrend_local)
+        # Lazy
+        _, _ = ds_detrend.slope.data[:], ds_detrend.y.data[:]
 
     # Start the db's
     if os.path.isfile(climate_db_file):
+        print("Removing existing db_file: {}".format(climate_db_file))
         os.remove(climate_db_file)
 
     # Main loop
@@ -168,12 +178,21 @@ def noaa_seas_thresh(climate_db_file,
             continue
 
         # De-trend
-        SST -= scls
+        if scale_file is not None:
+            SST -= scls
+
         if detrend_local:
-            fit = np.polyfit(np.arange(SST.size), SST, 1)
-            out_linear[:, ilat, jlon] = fit
-            f = np.poly1d(fit)
-            SST -= f(np.arange(SST.size))
+            #fit = np.polyfit(np.arange(SST.size), SST, 1)
+            #out_linear[:, ilat, jlon] = fit
+            #f = np.poly1d(fit)
+            #SST -= f(np.arange(SST.size))
+            f = np.poly1d(ds_detrend.slope[ilat,jlon],
+                          ds_detrend.y[ilat,jlon])
+            dSSTa = f(t)
+            SST -= dSSTa
+            embed(header='193 of climate')
+            out_linear[:, ilat, jlon] = (ds_detrend.slope[ilat,jlon],
+                          ds_detrend.y[ilat,jlon])
 
         # Work it
         mhw_numba.calc_clim(lenClimYear, feb29, doyClim, clim_start, 
@@ -486,19 +505,19 @@ def main(flg_main):
     if flg_main & (2 ** 4):
         print("Running 2019, de-trended")
         # 2012
-        detrend_sst(os.path.join(noaa_path, 'noaa_detrend_median_1983_2012.parquet'), 
+        detrend_sst_global(os.path.join(noaa_path, 'noaa_detrend_median_1983_2012.parquet'), 
                     years=(1983,2012), stat='median',
                     climate_file=os.path.join(os.getenv('NOAA_OI'), 
                                     'NOAA_OI_climate_1983-2012.nc'))
-        detrend_sst(os.path.join(noaa_path, 'noaa_detrend_mean_1983_2012.parquet'), 
+        detrend_sst_global(os.path.join(noaa_path, 'noaa_detrend_mean_1983_2012.parquet'), 
                     years=(1983,2012), stat='mean',
                     climate_file=os.path.join(os.getenv('NOAA_OI'), 
                                     'NOAA_OI_climate_1983-2012.nc'))
 
         # 2019
-        detrend_sst(os.path.join(noaa_path, 'noaa_detrend_median_1983_2019.parquet'), 
+        detrend_sst_global(os.path.join(noaa_path, 'noaa_detrend_median_1983_2019.parquet'), 
                     stat='median', years=(1983,2019))
-        detrend_sst(os.path.join(noaa_path, 'noaa_detrend_mean_1983_2019.parquet'), 
+        detrend_sst_global(os.path.join(noaa_path, 'noaa_detrend_mean_1983_2019.parquet'), 
                     stat='mean', years=(1983,2019))
         # TEST
         #climate_file = os.path.join(os.getenv('NOAA_OI'), 

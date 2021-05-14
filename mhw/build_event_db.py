@@ -90,6 +90,7 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
             linear_fit = ds.linear
             _ = linear_fit.data[:]
 
+
     # Grab the list of SST V2 files
     #all_sst_files = glob.glob(os.path.join(noaa_path, 'sst.day*nc'))
     all_sst_files = glob.glob(os.path.join(noaa_path, sst_root))
@@ -221,11 +222,12 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
         frac = np.sum(np.invert(SST.mask))/t.size
         if SST.mask is np.bool_(False) or frac > min_frac:
             # Scale
-            assert SST.size == scls.size # Be wary of masking
-            SST -= scls
-            if detrend_local:
+            if scale_file is not None:
+                assert SST.size == scls.size # Be wary of masking
+                SST -= scls
+            elif detrend_local:
                 f = np.poly1d(linear_fit.data[:, ilat, jlon])
-                SST -= f(np.arange(SST.size))
+                SST -= f(t) #np.arange(SST.size))
             # Run
             marineHeatWaves.detect_with_input_climate(t, doy,
                                                       isign*SST.flatten(),
