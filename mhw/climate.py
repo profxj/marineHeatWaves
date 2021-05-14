@@ -78,22 +78,10 @@ def noaa_seas_thresh(climate_db_file,
             noaa_path = os.getenv("NOAA_OI")
             sst_root = 'sst.day*nc'
 
-    # Grab the list of SST V2 files
-    all_sst_files = glob.glob(os.path.join(noaa_path, sst_root))
-    all_sst_files.sort()
-
-    # Load the Cubes into memory
     if data_in is None:
-        for ii, ifile in enumerate(all_sst_files):
-            if str(climatologyPeriod[0]) in ifile:
-                istart = ii
-            if str(climatologyPeriod[1]) in ifile:
-                iend = ii
-        all_sst_files = all_sst_files[istart:iend+1]
-
-        print("Loading up the files. Be patient...")
         lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(
-            all_sst_files, interpolated=interpolated)
+            noaa_path, sst_root, climatologyPeriod,
+                 interpolated=interpolated)
     else:
         lat_coord, lon_coord, t, all_sst = data_in
 
@@ -280,7 +268,7 @@ def build_time_dict(t):
 
     return times
 
-def detrend_sst(outfile, climate_file=None, stat='median', 
+def detrend_sst_global(outfile, climate_file=None, stat='median', 
                     years=(1983, 2019), check=False):
     """
     Calculate the global ocean's SST evolution across
@@ -383,6 +371,80 @@ def detrend_sst(outfile, climate_file=None, stat='median',
     pd_tbl.to_parquet(outfile)#, 'median_climate', mode='w')
     #pd_tbl.to_hdf(outfile, 'median_climate', mode='w')
     print("Wrote: {}".format(outfile))
+
+
+def detrend_sst_local(outfile, climate_file, 
+                    years=(1983, 2019), check=False,
+                    noaa_path=None, interpolated=False):
+    # Load non de-trended climatology
+    ds = xarray.open_dataset(climate_file)
+    C_data = ds.seasonalT.values
+
+    # Path
+    if noaa_path is None:
+        if interpolated:
+            noaa_path = os.path.join(os.getenv("NOAA_OI"), 'Interpolated')
+            sst_root='interpolated_sst*'
+        else:
+            noaa_path = os.getenv("NOAA_OI")
+            sst_root = 'sst.day*nc'
+
+    # Load up SST
+    lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(
+            noaa_path, sst_root, years, 
+            interpolated=interpolated)
+
+    # Time
+    time_dict = build_time_dict(t)
+    doyClim = time_dict['doy']
+    
+    # Set up coords
+    irange = np.arange(lat_coord.shape[0])
+    jrange = np.arange(lon_coord.shape[0])
+    ii_grid, jj_grid = np.meshgrid(irange, jrange)
+    ii_grid = ii_grid.flatten()
+    jj_grid = jj_grid.flatten()
+    n_calc = len(irange) * len(jrange)
+
+    # Output arrays
+    slope_detrend = np.zeros((lat_coord.shape[0], lon_coord.shape[0]), dtype='float32')
+    y_detrend = np.zeros((lat_coord.shape[0], lon_coord.shape[0]), dtype='float32')
+
+    # Loop time
+    counter = 0
+    while (counter < n_calc):
+        ilat = ii_grid[counter]
+        jlon = jj_grid[counter]
+        counter += 1
+        
+        # Grab SST
+        SST = mhw_utils.grab_T(all_sst, ilat, jlon)
+        frac = np.sum(np.invert(SST.mask))/t.size
+        if SST.mask is np.bool_(False) or frac > 0.9:
+            pass
+        else:
+            continue
+        
+        # Subtract climatology
+        C_ij = [ds.seasonalT[doy-1, ilat, jlon] for doy in doyClim]
+        SSTa_tij = SST - C_ij
+        # Fit 
+        fit = np.polyfit(t, SSTa_tij, 1)
+
+        # Save
+        slope_detrend[ilat, jlon] = fit[0]
+        y_detrend[ilat, jlon] = fit[1]
+
+    # Write
+    da_slope = xarray.DataArray(slope_detrend, 
+                                coords=[lat_coord, lon_coord])
+    da_y = xarray.DataArray(y_detrend, 
+                                coords=[lat_coord, lon_coord])
+    # Detrend
+    detrend_ds = xarray.Dataset({"slope": da_slope,
+                                    "y": da_y})
+    # Write
+    detrend_ds.to_netcdf(outfile)
 
 
 def main(flg_main):
