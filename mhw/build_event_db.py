@@ -21,6 +21,7 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
          cut_sky=False, data_in=None, min_frac=0.9, scale_file=None,
          n_calc=None, append=False, seas_climYear=None, 
          thresh_climYear=None, minDT=None,
+         detrend_local=False,
          nsub=49999, coldSpells=False, interpolated=False):
     """
     Generate an MHW Event database
@@ -57,6 +58,8 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
         If True, search for Cold spells, not Heat Wave events
     minDT : float, optional
         If set, a MHWE must exceed this absoulte DT
+    detrend_local : bool, optional
+        If True, detrend the climatology at each grid cell with a linear trend
 
     Returns
     -------
@@ -82,6 +85,10 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
         # No lazy
         _ = seas_climYear.data[:]
         _ = thresh_climYear.data[:]
+        # 
+        if detrend_local:
+            linear_fit = ds.linear
+            _ = linear_fit.data[:]
 
     # Grab the list of SST V2 files
     #all_sst_files = glob.glob(os.path.join(noaa_path, 'sst.day*nc'))
@@ -95,7 +102,7 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
                 istart = ii
             if str(years[1]) in ifile:
                 iend = ii
-        all_sst_files = all_sst_files[istart:iend]
+        all_sst_files = all_sst_files[istart:iend+1]
 
         print("Loading up the files. Be patient...")
         lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(
@@ -152,8 +159,6 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
     # Start the db's
     if os.path.isfile(dbfile) and not append:
         # BE CAREFUL!!
-        print("REMOVE THAT DBFILE!!")
-        import pdb; pdb.set_trace()  # No longer an option
         os.remove(dbfile)
 
     # Connect to the db
@@ -218,6 +223,9 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
             # Scale
             assert SST.size == scls.size # Be wary of masking
             SST -= scls
+            if detrend_local:
+                f = np.poly1d(linear_fit.data[:, ilat, jlon])
+                SST -= f(np.arange(SST.size))
             # Run
             marineHeatWaves.detect_with_input_climate(t, doy,
                                                       isign*SST.flatten(),
@@ -276,8 +284,9 @@ def build_mhw_events(dbfile, years, noaa_path=None, climate_cube_file=None,
             sub_count += 1
 
         # Count
-        print('count={} of {}. {} were masked. {} total'.format(
-            counter, n_calc, nmask, tot_events))
+        if (counter % 10000) == 0:
+            print('count={} of {}. {} were masked. {} total'.format(
+                counter, n_calc, nmask, tot_events))
 
     print("All done!!")
     print("See {}".format(dbfile))
@@ -314,13 +323,13 @@ def main(flg_main):
     if flg_main & (2 ** 1):
         build_mhw_events(os.path.join(MHW_path, 'db', 
                                       'mhw_events_allsky_defaults.db'), 
-             (1982,2019), cut_sky=False, append=False)
+             (1983,2019), cut_sky=False, append=False)
 
     # 2019 climate
     if flg_main & (2 ** 2):
         build_mhw_events(os.path.join(MHW_path, 'db', 
                                       'mhw_events_allsky_2019.db'), 
-             (1982,2019), cut_sky=False, append=False,
+             (1983,2019), cut_sky=False, append=False,
              climate_cube_file=os.path.join(
                  os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019.nc'))
 
@@ -358,7 +367,7 @@ def main(flg_main):
         print("Running 2019, not smoothed")
         build_mhw_events(os.path.join(MHW_path, 'db', 
                                       'mhw_events_allsky_2019_nosmooth.db'), 
-             (1982,2019), cut_sky=False, append=False,
+             (1983,2019), cut_sky=False, append=False,
              climate_cube_file=os.path.join(
                  os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019_nosmooth.nc'))
 
@@ -367,10 +376,33 @@ def main(flg_main):
         print("Running 2019 with DT>0.5K ")
         build_mhw_events(os.path.join(MHW_path, 'db', 
                                       'mhw_events_allsky_2019_DT0.5.db'), 
-             (1982,2019), cut_sky=False, append=False,
+             (1983,2019), cut_sky=False, append=False,
              climate_cube_file=os.path.join(
                  os.getenv('NOAA_OI'), 'NOAA_OI_climate_1983-2019.nc'),
              minDT=0.5)
+
+    # de-trend (mean) + DT > 0.5K
+    if flg_main & (2 ** 7):
+        print("Running 2019 + de-trend mean + DT>0.5K ")
+        build_mhw_events(os.path.join(MHW_path, 'db', 
+                                      'mhw_events_allsky_2019_mean_DT0.5.db'), 
+             (1983,2019), cut_sky=False, append=False,
+             climate_cube_file=os.path.join(
+                 os.getenv('NOAA_OI'), 'NOAA_OI_detrend_mean_climate_1983-2019.nc'),
+             scale_file=os.path.join(noaa_path, 
+                                     'noaa_detrend_mean_1983_2019.parquet'),
+             minDT=0.5)
+
+    # 2019, detrend linear, local
+    if flg_main & (2 ** 8):
+        print("Running 2019 with linear de-trend ")
+        build_mhw_events(os.path.join(MHW_path, 'db', 
+                                      'mhw_events_allsky_2019_local.db'), 
+             (1983,2019), 
+             cut_sky=False, 
+             detrend_local=True,
+             climate_cube_file=os.path.join(
+                 os.getenv('NOAA_OI'), 'NOAA_OI_detrend_local_climate_1983-2019.nc'))
 
     # Interpolated (2.5deg) 
     if flg_main & (2 ** 10):
@@ -382,9 +414,8 @@ def main(flg_main):
                             climate_cube_file=climate_cube_file)
 
         # 1983-2019 climatology
-        if False:
-            climate_cube_file = os.path.join(noaa_path, 'NOAA_OI_climate_2.5deg_1983-2019.nc')
-            build_mhw_events('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2019.db',
+        climate_cube_file = os.path.join(noaa_path, 'NOAA_OI_climate_2.5deg_1983-2019.nc')
+        build_mhw_events('/home/xavier/Projects/Oceanography/MHW/db/mhw_events_interp2.5_2019.db',
                             (1982,2019), cut_sky=False, append=False,
                             interpolated=True,
                             climate_cube_file=climate_cube_file)
@@ -393,9 +424,21 @@ def main(flg_main):
     if flg_main & (2 ** 50):
         clobber = False
         possible_files = ['mhw_events_allsky_defaults.db', 
-                          'mhw_events_allsky_2019.db']
+                          'mhw_events_allsky_2019.db',
+                          'mhw_events_allsky_2019_median.db',
+                          'mhw_events_allsky_2019_mean.db',
+                          'mhw_events_allsky_2019_nosmooth.db',
+                          'mhw_events_allsky_2019_DT0.5.db', 
+                          'mhw_events_allsky_2019_mean_DT0.5.db', 
+                          'mhw_events_allsky_2019_local.db',
+        ]
         for root in possible_files:
             ifile = os.path.join(MHW_path, 'db', root)
+            if not os.path.isfile(ifile):
+                print("Input file not present: {}".format(ifile))
+                print("Skipping")
+                continue
+            # Output file
             pfile = ifile.replace('.db', '.parquet')
             if os.path.isfile(pfile) and not clobber:
                 print("Not clobbering: {}".format(pfile))
@@ -421,6 +464,9 @@ if __name__ == '__main__':
         #flg_main += 2 ** 4  # De-trended 2019, mean
         #flg_main += 2 ** 5  # 2019, not smoothed
         #flg_main += 2 ** 6  # 2019, DT > 0.5K
+        #flg_main += 2 ** 7  # De-trended 2019 (mean), DT > 0.5K
+        #flg_main += 2 ** 8  # De-trended 2019, linear+local
+        #flg_main += 2 ** 10  # Interpolated
         flg_main += 2 ** 50  # Parquet em
     else:
         flg_main = sys.argv[1]

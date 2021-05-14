@@ -5,6 +5,7 @@ import os
 import glob
 from typing import IO
 from IPython.core.magic_arguments import MagicHelpFormatter
+from numpy.linalg.linalg import det
 from pkg_resources import resource_filename
 
 import numpy as np
@@ -32,6 +33,7 @@ def noaa_seas_thresh(climate_db_file,
                      smoothPercentile = True,
                      pctile=90.,
                      interpolated=False,
+                     detrend_local=False,
                      min_frac=0.9, n_calc=None, debug=False):
     """
     Build climate model for NOAA OI data
@@ -64,6 +66,8 @@ def noaa_seas_thresh(climate_db_file,
         Files are interpolated
     smoothPercentile : bool, optional
         If True, smooth the measure in a 31 day box.  Default=True
+    detrend_local : bool, optional
+        If True, detrend the climatology at each grid cell with a linear trend
     """
     # Path
     if noaa_path is None:
@@ -132,6 +136,7 @@ def noaa_seas_thresh(climate_db_file,
     lenClimYear = 366  # This has to match what is in climate.py
     out_seas = np.zeros((lenClimYear, lat_coord.shape[0], lon_coord.shape[0]), dtype='float32')
     out_thresh = np.zeros((lenClimYear, lat_coord.shape[0], lon_coord.shape[0]), dtype='float32')
+    out_linear = np.zeros((2, lat_coord.shape[0], lon_coord.shape[0]), dtype='float32')
 
     counter = 0
 
@@ -174,8 +179,15 @@ def noaa_seas_thresh(climate_db_file,
         else:
             continue
 
-        # Work it
+        # De-trend
         SST -= scls
+        if detrend_local:
+            fit = np.polyfit(np.arange(SST.size), SST, 1)
+            out_linear[:, ilat, jlon] = fit
+            f = np.poly1d(fit)
+            SST -= f(np.arange(SST.size))
+
+        # Work it
         mhw_numba.calc_clim(lenClimYear, feb29, doyClim, clim_start, 
                             clim_end, wHW_array, nwHW, TClim, 
                             thresh_climYear, SST, pctile, 
@@ -198,20 +210,24 @@ def noaa_seas_thresh(climate_db_file,
         if (counter % 100000 == 0) or (counter == n_calc):
             print('count={} of {}.'.format(counter, n_calc))
             print("Saving...")
-            write_me(out_seas, out_thresh, lat_coord, lon_coord, climate_db_file)
+            write_me(out_linear, out_seas, out_thresh, lat_coord, lon_coord, climate_db_file)
 
     # Final write
-    write_me(out_seas, out_thresh, lat_coord, lon_coord, climate_db_file)
+    write_me(out_linear, out_seas, out_thresh, lat_coord, lon_coord, climate_db_file)
     print("All done!!")
 
-def write_me(out_seas, out_thresh, lat_coord, lon_coord, climate_db_file):
+
+def write_me(out_linear, out_seas, out_thresh, lat_coord, lon_coord, climate_db_file):
     """ Simple method for I/O """
     time_coord = xarray.IndexVariable('doy', np.arange(366, dtype=int) + 1)
+    fit_coord = xarray.IndexVariable('p', np.arange(2, dtype=int))
     da_seasonal = xarray.DataArray(out_seas, coords=[time_coord, lat_coord, lon_coord])
     da_thresh = xarray.DataArray(out_thresh, coords=[time_coord, lat_coord, lon_coord])
+    da_linear = xarray.DataArray(out_linear, coords=[fit_coord, lat_coord, lon_coord])
     # Data set
     climate_ds = xarray.Dataset({"seasonalT": da_seasonal,
-                                    "threshT": da_thresh})
+                                    "threshT": da_thresh,
+                                    "linear": da_linear})
     # Write
     climate_ds.to_netcdf(climate_db_file)#, encoding=encoding)
 
@@ -451,7 +467,7 @@ def main(flg_main):
             os.path.join(noaa_path, 'NOAA_OI_detrend_mean_climate_1983-2019.nc'),
             climatologyPeriod=(1983, 2019),
             cut_sky=False, scale_file=scale_file)
-        # Linear
+
 
     # 95 percentile
     if flg_main & (2 ** 7):
@@ -499,10 +515,19 @@ def main(flg_main):
 
         # 2019
         noaa_seas_thresh(
-            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/NOAA_OI_climate_2.5deg_1983-2019.nc',
+            '/home/xavier/Projects/Oceanography/data/SST/NOAA-OI-SST-V2/Interpolated/NOAA_OI_climate_2.5deg_1983-2019.nc',
             interpolated=True,
             climatologyPeriod=(1983, 2019),
             cut_sky=False)#, data_in=data_in)
+
+    # Full; de-trend climatologies locally (linear), 2019
+    if flg_main & (2 ** 11):
+        # Median
+        noaa_seas_thresh(
+            os.path.join(noaa_path, 'NOAA_OI_detrend_local_climate_1983-2019.nc'),
+            climatologyPeriod=(1983, 1986), #2019),
+            cut_sky=False, detrend_local=True)
+        # Mean
 
 # Command line execution
 if __name__ == '__main__':
@@ -515,7 +540,9 @@ if __name__ == '__main__':
         #flg_main += 2 ** 3  # 2019, not smoothed
         #flg_main += 2 ** 4  # Create De-trend files (2012, 2019, mean, median)
         #flg_main += 2 ** 5  # Test
-        flg_main += 2 ** 6  # De-trend climatology, 2019 (mean, median)
+        #flg_main += 2 ** 6  # De-trend climatology, 2019 (mean, median)
+        #flg_main += 2 ** 9  # Interpolated
+        flg_main += 2 ** 11  # De-trend climatology local (linear), 2019 
     else:
         flg_main = sys.argv[1]
 
