@@ -30,6 +30,14 @@ def event_stats(n_events, t, mhw, temp, thresh, seas):
         #mhw['index_peak'].append(tt_start + tt_peak)
 '''
 
+@njit(parallel=True)
+def sub_C(doyClim, seasonalT, ilat, jlon, SST, t):
+    # Subtract climatology
+    C_ij = [seasonalT[doy-1, ilat, jlon] for doy in doyClim]
+    SSTa_tij = SST - np.array(C_ij)
+    # Return
+    return SSTa_tij
+
 
 @njit(parallel=True)
 def event_stats(n_events, t, temp, thresh, seas, time_start, time_end,

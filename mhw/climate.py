@@ -393,12 +393,8 @@ def detrend_sst_global(outfile, climate_file=None, stat='median',
 
 
 def detrend_sst_local(outfile, climate_file, 
-                    years=(1983, 2019), check=False,
+                    years=(1983, 2019), 
                     noaa_path=None, interpolated=False):
-    # Load non de-trended climatology
-    ds = xarray.open_dataset(climate_file)
-    C_data = ds.seasonalT.values
-
     # Path
     if noaa_path is None:
         if interpolated:
@@ -412,6 +408,10 @@ def detrend_sst_local(outfile, climate_file,
     lat_coord, lon_coord, t, all_sst = mhw_utils.load_noaa_sst(
             noaa_path, sst_root, years, 
             interpolated=interpolated)
+
+    # Load non de-trended climatology
+    ds = xarray.open_dataset(climate_file)
+    C_data = ds.seasonalT.values
 
     # Time
     time_dict = build_time_dict(t)
@@ -444,15 +444,22 @@ def detrend_sst_local(outfile, climate_file,
         else:
             continue
         
+        '''
         # Subtract climatology
         C_ij = [ds.seasonalT[doy-1, ilat, jlon] for doy in doyClim]
         SSTa_tij = SST - C_ij
         # Fit 
         fit = np.polyfit(t, SSTa_tij, 1)
-
+        '''
+        # Fit
+        SSTa_tij = mhw_numba.sub_C(doyClim, C_data,
+                                 ilat, jlon, SST, t)
+        fit = np.polyfit(t, SSTa_tij, 1)
         # Save
         slope_detrend[ilat, jlon] = fit[0]
         y_detrend[ilat, jlon] = fit[1]
+        if (counter % 100000 == 0):
+            print("Count = {} of {}".format(counter, n_calc))
 
     # Write
     da_slope = xarray.DataArray(slope_detrend, 
@@ -464,7 +471,6 @@ def detrend_sst_local(outfile, climate_file,
                                     "y": da_y})
     # Write
     detrend_ds.to_netcdf(outfile)
-
 
 def main(flg_main):
     if flg_main == 'all':
@@ -496,7 +502,8 @@ def main(flg_main):
     # Full Climate 1983-2019; not smoothed
     if flg_main & (2 ** 3):
         print("Running 2019, not smoothed")
-        noaa_seas_thresh(os.path.join(noaa_path, 'NOAA_OI_climate_1983-2019_nosmooth.nc'),
+        noaa_seas_thresh(
+            os.path.join(noaa_path, 'NOAA_OI_climate_1983-2019_nosmooth.nc'),
                          climatologyPeriod=(1983, 2019),
                          smoothPercentile=False,
                          cut_sky=False)
@@ -603,12 +610,17 @@ def main(flg_main):
 
     # Full; de-trend climatologies locally (linear), 2019
     if flg_main & (2 ** 11):
+        # Generate the fits
+        detrend_sst_local('tst.nc',
+            os.path.join(noaa_path, 'NOAA_OI_climate_1983-2012.nc'),
+            years=(1982, 1984))
+        '''
         # Median
         noaa_seas_thresh(
             os.path.join(noaa_path, 'NOAA_OI_detrend_local_climate_1983-2019.nc'),
             climatologyPeriod=(1983, 1986), #2019),
             cut_sky=False, detrend_local=True)
-        # Mean
+        '''
 
 # Command line execution
 if __name__ == '__main__':

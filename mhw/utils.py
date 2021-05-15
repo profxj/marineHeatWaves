@@ -128,18 +128,22 @@ def load_noaa_sst(noaa_path:str, sst_root:str,
 
     # Load the Cubes into memory
     for ii, ifile in enumerate(all_sst_files):
-        if str(climatologyPeriod[-1]) in ifile:
-            istart = ii
         if str(climatologyPeriod[0]) in ifile:
-            iend = ii
-    sst_files = all_sst_files[istart:iend+0]
+            istart = ii
+        if str(climatologyPeriod[-1]) in ifile:
+            iend = ii+1
+    sst_files = all_sst_files[istart:iend]
 
     print("Loading up the files. Be patient...")
     all_sst = []
     allts = []
-    for ifile in sst_files:
+    for kk, ifile in enumerate(sst_files):
         print(ifile)  # For progress
         ds = xarray.open_dataset(ifile)
+        # lat, lon
+        if kk == 0:
+            lat = ds.lat 
+            lon = ds.lon
         # Allow for interpolated files
         if interpolated:
             t = ds.time.data.astype(int).tolist()
@@ -152,7 +156,7 @@ def load_noaa_sst(noaa_path:str, sst_root:str,
         all_sst.append(sst)
         allts += t
     #
-    return ds.lat, ds.lon, np.array(allts), all_sst
+    return lat, lon, np.array(allts), all_sst
 
 
     
